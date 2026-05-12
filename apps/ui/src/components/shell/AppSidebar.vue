@@ -20,6 +20,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import Icon, { type IconName } from '@/components/icons/Icon.vue';
 import logoSw from '@/assets/icons/logo-sw.svg?raw';
 import { useAuthStore } from '@/stores/auth';
+import { LAYERS } from './layers';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -28,17 +29,6 @@ async function signOut(): Promise<void> {
   await router.push({ name: 'login' });
 }
 
-// Phase 2 will replace this stub with real getMenuItems / listLayers data.
-const layers = ref([
-  { key: 'general', name: 'General Service', svc: 84, color: 'var(--sw-accent)' },
-  { key: 'mesh', name: 'Service Mesh', svc: 22, color: 'var(--sw-info)' },
-  { key: 'k8s', name: 'Kubernetes', svc: 62, color: 'var(--sw-purple)' },
-  { key: 'rum', name: 'Browser (RUM)', svc: 8, color: 'var(--sw-cyan)' },
-  { key: 'mq', name: 'Virtual MQ', svc: 6, color: 'var(--sw-ok)' },
-  { key: 'db', name: 'Virtual Database', svc: 6, color: 'var(--sw-warn)' },
-  { key: 'otel', name: 'OpenTelemetry', svc: 18, color: 'var(--sw-purple)' },
-  { key: 'faas', name: 'FaaS', svc: 3, color: 'var(--sw-err)' },
-]);
 const expandedLayer = ref<string | null>('general');
 
 const route = useRoute();
@@ -53,15 +43,10 @@ interface NavRow {
   badge?: { text: string; kind?: 'ok' | 'warn' | 'err' | 'info' };
 }
 
-const telemetry: NavRow[] = [
-  { icon: 'metric', label: 'Dashboards', to: '/dashboards' },
-  { icon: 'trace', label: 'Traces', to: '/operate/traces' },
-  { icon: 'log', label: 'Logs', to: '/operate/logs' },
-  { icon: 'prof', label: 'Profiling', to: '/profiling' },
-  { icon: 'event', label: 'Events', to: '/operate/events' },
-];
+// Cross-layer operations stay global.
 const operate: NavRow[] = [
   { icon: 'alert', label: 'Alarms', to: '/operate/alarms', badge: { text: '7', kind: 'err' } },
+  { icon: 'trace', label: 'Trace search', to: '/operate/traces' },
 ];
 const admin: NavRow[] = [
   { icon: 'svc', label: 'Cluster status', to: '/cluster' },
@@ -81,9 +66,9 @@ const admin: NavRow[] = [
     <nav class="sw-nav">
       <div class="sw-nav-section sw-row" style="justify-content: space-between">
         <span>Layers</span>
-        <span style="color: var(--sw-fg-3); font-weight: 400">{{ layers.length }} layers</span>
+        <span style="color: var(--sw-fg-3); font-weight: 400">{{ LAYERS.length }} layers</span>
       </div>
-      <template v-for="L in layers" :key="L.key">
+      <template v-for="L in LAYERS" :key="L.key">
         <div
           class="sw-nav-item"
           :class="{ 'is-active': expandedLayer === L.key }"
@@ -91,42 +76,120 @@ const admin: NavRow[] = [
         >
           <span class="layer-dot" :style="{ background: L.color }" />
           <span :style="{ fontWeight: expandedLayer === L.key ? 600 : 500 }">{{ L.name }}</span>
-          <span class="sw-badge" style="margin-left: auto">{{ L.svc }}</span>
-          <span class="caret" :class="{ open: expandedLayer === L.key }"><Icon name="caret" :size="10" /></span>
+          <span class="sw-badge" style="margin-left: auto">{{ L.serviceCount }}</span>
+          <span class="caret" :class="{ open: expandedLayer === L.key }">
+            <Icon name="caret" :size="10" />
+          </span>
         </div>
         <div v-if="expandedLayer === L.key" class="layer-children">
-          <RouterLink :to="`/layer/${L.key}`" class="sw-nav-item" :class="{ 'is-active': isActive(`/layer/${L.key}`) }">
-            <Icon name="dash" /><span>Layer overview</span>
+          <RouterLink
+            v-if="L.caps.overview"
+            :to="`/layer/${L.key}`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}`) && route.path === `/layer/${L.key}` }"
+          >
+            <Icon name="dash" /><span>Overview</span>
           </RouterLink>
-          <RouterLink :to="`/layer/${L.key}/services`" class="sw-nav-item" :class="{ 'is-active': isActive(`/layer/${L.key}/services`) }">
-            <Icon name="svc" /><span>Services</span><span class="sw-badge" style="margin-left: auto">{{ L.svc }}</span>
+
+          <RouterLink
+            v-if="L.slots.services"
+            :to="`/layer/${L.key}/services`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/services`) }"
+          >
+            <Icon name="svc" /><span>{{ L.slots.services }}</span>
+            <span class="sw-badge" style="margin-left: auto">{{ L.serviceCount }}</span>
           </RouterLink>
-          <RouterLink :to="`/layer/${L.key}/instances`" class="sw-nav-item" :class="{ 'is-active': isActive(`/layer/${L.key}/instances`) }">
-            <Icon name="prof" /><span>Instances</span>
+          <RouterLink
+            v-if="L.slots.instances"
+            :to="`/layer/${L.key}/instances`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/instances`) }"
+          >
+            <Icon name="prof" /><span>{{ L.slots.instances }}</span>
           </RouterLink>
-          <RouterLink :to="`/layer/${L.key}/endpoints`" class="sw-nav-item" :class="{ 'is-active': isActive(`/layer/${L.key}/endpoints`) }">
-            <Icon name="ep" /><span>Endpoints</span>
+          <RouterLink
+            v-if="L.slots.endpoints"
+            :to="`/layer/${L.key}/endpoints`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/endpoints`) }"
+          >
+            <Icon name="ep" /><span>{{ L.slots.endpoints }}</span>
           </RouterLink>
-          <RouterLink :to="`/layer/${L.key}/topology`" class="sw-nav-item" :class="{ 'is-active': isActive(`/layer/${L.key}/topology`) }">
+
+          <RouterLink
+            v-if="L.caps.topology"
+            :to="`/layer/${L.key}/topology`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/topology`) }"
+          >
             <Icon name="topo" /><span>Topology</span>
+          </RouterLink>
+          <RouterLink
+            v-if="L.caps.dashboards"
+            :to="`/layer/${L.key}/dashboards`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/dashboards`) }"
+          >
+            <Icon name="metric" /><span>Dashboards</span>
+          </RouterLink>
+          <RouterLink
+            v-if="L.caps.traces"
+            :to="`/layer/${L.key}/traces`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/traces`) }"
+          >
+            <Icon name="trace" /><span>Traces</span>
+          </RouterLink>
+          <RouterLink
+            v-if="L.caps.logs"
+            :to="`/layer/${L.key}/logs`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/logs`) }"
+          >
+            <Icon name="log" /><span>Logs</span>
+          </RouterLink>
+          <RouterLink
+            v-if="L.caps.profiling"
+            :to="`/layer/${L.key}/profiling`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/profiling`) }"
+          >
+            <Icon name="flame" /><span>Profiling</span>
+          </RouterLink>
+          <RouterLink
+            v-if="L.caps.events"
+            :to="`/layer/${L.key}/events`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${L.key}/events`) }"
+          >
+            <Icon name="event" /><span>Events</span>
           </RouterLink>
         </div>
       </template>
 
-      <div class="sw-nav-section">Telemetry</div>
-      <RouterLink v-for="row in telemetry" :key="row.to" :to="row.to" class="sw-nav-item" :class="{ 'is-active': isActive(row.to) }">
-        <Icon :name="row.icon" /><span>{{ row.label }}</span>
-        <span v-if="row.badge" class="sw-badge" :class="row.badge.kind" style="margin-left: auto">{{ row.badge.text }}</span>
-      </RouterLink>
-
       <div class="sw-nav-section">Operate</div>
-      <RouterLink v-for="row in operate" :key="row.to" :to="row.to" class="sw-nav-item" :class="{ 'is-active': isActive(row.to) }">
+      <RouterLink
+        v-for="row in operate"
+        :key="row.to"
+        :to="row.to"
+        class="sw-nav-item"
+        :class="{ 'is-active': isActive(row.to) }"
+      >
         <Icon :name="row.icon" /><span>{{ row.label }}</span>
-        <span v-if="row.badge" class="sw-badge" :class="row.badge.kind" style="margin-left: auto">{{ row.badge.text }}</span>
+        <span v-if="row.badge" class="sw-badge" :class="row.badge.kind" style="margin-left: auto">
+          {{ row.badge.text }}
+        </span>
       </RouterLink>
 
       <div class="sw-nav-section">Admin</div>
-      <RouterLink v-for="row in admin" :key="row.to" :to="row.to" class="sw-nav-item" :class="{ 'is-active': isActive(row.to) }">
+      <RouterLink
+        v-for="row in admin"
+        :key="row.to"
+        :to="row.to"
+        class="sw-nav-item"
+        :class="{ 'is-active': isActive(row.to) }"
+      >
         <Icon :name="row.icon" /><span>{{ row.label }}</span>
       </RouterLink>
     </nav>
@@ -136,7 +199,15 @@ const admin: NavRow[] = [
         {{ auth.user?.username ? auth.user.username.slice(0, 2).toUpperCase() : '?' }}
       </div>
       <div style="line-height: 1.2; flex: 1; min-width: 0; overflow: hidden">
-        <div style="color: var(--sw-fg-0); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+        <div
+          style="
+            color: var(--sw-fg-0);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          "
+        >
           {{ auth.user?.username ?? 'guest' }}
         </div>
         <div>{{ auth.user?.roles?.join(' · ') ?? 'not signed in' }}</div>

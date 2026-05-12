@@ -15,75 +15,85 @@
  * limitations under the License.
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
+import { findLayer } from '@/components/shell/layers';
 import { useAuthStore } from '@/stores/auth';
 
-const shellRoutes: RouteRecordRaw[] = [
-  {
-    path: '',
-    name: 'home',
-    component: () => import('@/views/landing/LandingView.vue'),
-  },
-  // Layer drill-down stubs
-  {
+const placeholder = () => import('@/views/PlaceholderView.vue');
+
+// Build a per-layer route bundle from the layer feature config. Each cap that
+// the layer declares becomes a sub-route under /layer/:layerKey/...
+// Unknown layer keys fall back to a generic "not found" via the catch-all.
+function layerSubRoutes(): RouteRecordRaw[] {
+  const sub: RouteRecordRaw[] = [];
+
+  sub.push({
     path: 'layer/:layerKey',
-    name: 'layer-overview',
-    component: () => import('@/views/PlaceholderView.vue'),
-    props: (route) => ({
-      title: `Layer · ${route.params.layerKey}`,
-      phase: 'Phase 2',
-      note: 'Layer overview · KPIs, throughput, services table, constellation.',
-    }),
-  },
-  {
-    path: 'layer/:layerKey/services',
-    component: () => import('@/views/PlaceholderView.vue'),
-    props: (route) => ({
-      title: `${route.params.layerKey} · Services`,
-      phase: 'Phase 2',
-    }),
-  },
-  {
-    path: 'layer/:layerKey/instances',
-    component: () => import('@/views/PlaceholderView.vue'),
-    props: (route) => ({
-      title: `${route.params.layerKey} · Instances`,
-      phase: 'Phase 3',
-    }),
-  },
-  {
-    path: 'layer/:layerKey/endpoints',
-    component: () => import('@/views/PlaceholderView.vue'),
-    props: (route) => ({
-      title: `${route.params.layerKey} · Endpoints`,
-      phase: 'Phase 3',
-    }),
-  },
-  {
-    path: 'layer/:layerKey/topology',
-    component: () => import('@/views/PlaceholderView.vue'),
-    props: (route) => ({
-      title: `${route.params.layerKey} · Topology`,
-      phase: 'Phase 4',
-      note: 'Three variants: force-directed, hierarchical DAG, hex/honeycomb.',
-    }),
-  },
+    component: placeholder,
+    props: (r) => {
+      const L = findLayer(String(r.params.layerKey));
+      return {
+        title: L ? `${L.name} · Overview` : `Layer · ${r.params.layerKey}`,
+        phase: 'Phase 2',
+        note: L
+          ? 'Per-layer landing: KPIs, throughput, service constellation, services table.'
+          : 'Unknown layer key.',
+      };
+    },
+  });
 
-  // Telemetry
-  { path: 'dashboards', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Dashboards', phase: 'Phase 3', note: 'Widget grid, per-scope templates, MQE editor.' } },
-  { path: 'operate/traces', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Trace explorer', phase: 'Phase 5', note: 'Native (v2/v1) + Zipkin Lens, switchable.' } },
-  { path: 'operate/traces/:traceId', component: () => import('@/views/PlaceholderView.vue'), props: (r) => ({ title: `Trace · ${r.params.traceId}`, phase: 'Phase 5' }) },
-  { path: 'operate/logs', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Log explorer', phase: 'Phase 5' } },
-  { path: 'profiling', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Profiling', phase: 'Phase 8', note: 'Sampled · async-profiler · eBPF · Go pprof — unified flame graph.' } },
-  { path: 'operate/events', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Events', phase: 'Phase 5' } },
+  for (const slot of ['services', 'instances', 'endpoints'] as const) {
+    sub.push({
+      path: `layer/:layerKey/${slot}`,
+      component: placeholder,
+      props: (r) => {
+        const L = findLayer(String(r.params.layerKey));
+        const label = L?.slots[slot] ?? slot;
+        return {
+          title: L ? `${L.name} · ${label}` : `Layer · ${slot}`,
+          phase: 'Phase 2 / 3',
+        };
+      },
+    });
+  }
 
-  // Operate
-  { path: 'operate/alarms', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Alarms', phase: 'Phase 5', note: 'Read-only; recovery is backend-auto. Live debug card via admin REST.' } },
+  const caps: { key: keyof NonNullable<ReturnType<typeof findLayer>>['caps']; label: string; phase: string }[] = [
+    { key: 'topology', label: 'Topology', phase: 'Phase 4' },
+    { key: 'dashboards', label: 'Dashboards', phase: 'Phase 3' },
+    { key: 'traces', label: 'Traces', phase: 'Phase 5' },
+    { key: 'logs', label: 'Logs', phase: 'Phase 5' },
+    { key: 'profiling', label: 'Profiling', phase: 'Phase 8' },
+    { key: 'events', label: 'Events', phase: 'Phase 5' },
+  ];
+  for (const c of caps) {
+    sub.push({
+      path: `layer/:layerKey/${c.key}`,
+      component: placeholder,
+      props: (r) => {
+        const L = findLayer(String(r.params.layerKey));
+        return {
+          title: L ? `${L.name} · ${c.label}` : `Layer · ${c.label}`,
+          phase: c.phase,
+          note: L && !L.caps[c.key] ? `${L.name} doesn't expose ${c.label.toLowerCase()}.` : undefined,
+        };
+      },
+    });
+  }
 
+  return sub;
+}
+
+const shellRoutes: RouteRecordRaw[] = [
+  { path: '', name: 'home', component: () => import('@/views/landing/LandingView.vue') },
+  ...layerSubRoutes(),
+  // Cross-layer operate
+  { path: 'operate/alarms', component: placeholder, props: { title: 'Alarms', phase: 'Phase 5', note: 'Read-only; recovery is backend-auto.' } },
+  { path: 'operate/traces', component: placeholder, props: { title: 'Trace search', phase: 'Phase 5', note: 'Cross-layer trace search. Per-layer trace explorers live under /layer/:key/traces.' } },
+  { path: 'operate/traces/:traceId', component: placeholder, props: (r) => ({ title: `Trace · ${r.params.traceId}`, phase: 'Phase 5' }) },
   // Admin
-  { path: 'cluster', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Cluster status', phase: 'Phase 6 / 7', note: 'Module activity matrix · storage health · receiver activity · effective config tree · TTL grid.' } },
-  { path: 'admin/users', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Users', phase: 'Phase 7' } },
-  { path: 'admin/roles', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Roles & permissions', phase: 'Phase 7' } },
-  { path: 'admin/audit', component: () => import('@/views/PlaceholderView.vue'), props: { title: 'Audit log', phase: 'Phase 7' } },
+  { path: 'cluster', component: placeholder, props: { title: 'Cluster status', phase: 'Phase 6 / 7', note: 'Module activity matrix · storage health · receiver activity · effective config tree · TTL grid.' } },
+  { path: 'admin/users', component: placeholder, props: { title: 'Users', phase: 'Phase 7' } },
+  { path: 'admin/roles', component: placeholder, props: { title: 'Roles & permissions', phase: 'Phase 7' } },
+  { path: 'admin/audit', component: placeholder, props: { title: 'Audit log', phase: 'Phase 7' } },
 ];
 
 const router = createRouter({
@@ -102,14 +112,13 @@ const router = createRouter({
     },
     {
       path: '/:catchAll(.*)*',
-      component: () => import('@/views/PlaceholderView.vue'),
+      component: placeholder,
       props: { title: 'Not found', phase: 'never', note: 'No route matches.' },
     },
   ],
 });
 
 let bootstrapped = false;
-
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!bootstrapped) {

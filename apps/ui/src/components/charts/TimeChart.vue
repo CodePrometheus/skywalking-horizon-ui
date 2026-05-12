@@ -129,9 +129,10 @@ function buildOption(): echarts.EChartsCoreOption {
     grid: {
       left: 36,
       right: props.series.some((s) => (s.yAxisIndex ?? 0) === 1) ? 32 : 8,
-      // When legend renders we need ~18px above the plot for the chips
-      // and a few px breathing room before the top axis label kicks in.
-      top: props.series.length > 1 ? 28 : 10,
+      // Legend chips need ~16px of their own + ~8px gap before the
+      // plot's top axis labels. Without enough top padding the chip
+      // baseline ends up sitting on top of the highest axis tick.
+      top: props.series.length > 1 ? 36 : 10,
       bottom: 8,
       containLabel: false,
     },
@@ -143,17 +144,26 @@ function buildOption(): echarts.EChartsCoreOption {
       splitLine: { show: false },
     },
     /* Dual y-axis when any series asks for axis 1. Right axis label
-     * picks up the unit from the first series on that axis when set. */
+     * picks up the unit from the first series on that axis when set.
+     *
+     * When a legend is visible (multi-series charts) we drop the
+     * axis name labels — they crowd against the legend chips and the
+     * unit is already conveyed through the legend chip annotation
+     * (count (/min) / latency (ms) for dual-axis) or implicit for
+     * single-axis multi-series like relabeled percentiles. Bare
+     * single-series widgets keep the axis name since the legend is
+     * hidden there. */
     yAxis: (() => {
       const hasRight = props.series.some((s) => (s.yAxisIndex ?? 0) === 1);
+      const legendVisible = props.series.length > 1;
       const rightUnit = props.series.find((s) => (s.yAxisIndex ?? 0) === 1)?.unit;
       const leftUnit = props.series.find((s) => (s.yAxisIndex ?? 0) === 0)?.unit ?? props.unit;
       const axes: Record<string, unknown>[] = [
         {
           type: 'value',
-          name: leftUnit ?? '',
+          name: legendVisible ? '' : leftUnit ?? '',
           nameTextStyle: { color: '#64748b', fontSize: 9, padding: [0, 0, 0, 0] },
-          nameGap: 6,
+          nameGap: 8,
           axisLine: { show: false },
           axisLabel: { color: '#64748b', fontSize: 9 },
           splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
@@ -162,9 +172,9 @@ function buildOption(): echarts.EChartsCoreOption {
       if (hasRight) {
         axes.push({
           type: 'value',
-          name: rightUnit ?? '',
+          name: legendVisible ? '' : rightUnit ?? '',
           nameTextStyle: { color: '#64748b', fontSize: 9 },
-          nameGap: 6,
+          nameGap: 8,
           axisLine: { show: false },
           axisLabel: { color: '#64748b', fontSize: 9 },
           splitLine: { show: false },

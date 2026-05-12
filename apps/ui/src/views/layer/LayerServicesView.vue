@@ -15,33 +15,23 @@
   limitations under the License.
 -->
 <!--
-  Services tab body for the per-layer page. Renders the constellation
-  visualization (Stage 2.8) over the sampled service set and lists
-  services in a table below (Stage 2.9 — currently a structural
-  placeholder while the table column model finalizes).
-
-  Data flows in from the shared /api/layer/:key/landing endpoint via
-  useLayerLanding — same query the Overview card already runs, so the
-  data is cached and shared between the two views.
+  Services tab body. The page-wide selector zone (in LayerShell) already
+  carries the services table + pinned selected service, so this view
+  doesn't duplicate that — it surfaces layer-wide insight (apdex
+  distribution + counts) and drill links into the deeper per-service
+  tabs (Dashboards / Instances / Traces / Logs).
 -->
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useRoute, RouterLink } from 'vue-router';
-import type { LandingServiceRow, LayerDef } from '@skywalking-horizon-ui/api-client';
-import { metricMeta } from '@/composables/metricCatalog';
+import type { LayerDef } from '@skywalking-horizon-ui/api-client';
 import { useLayerLanding } from '@/composables/useLayerLanding';
 import { useLayers } from '@/composables/useLayers';
 import { useSelectedService } from '@/composables/useSelectedService';
 import { useSetupStore } from '@/stores/setup';
-import { fmtMetric } from '@/utils/formatters';
 
 const route = useRoute();
 const layerKey = computed(() => String(route.params.layerKey ?? ''));
-const { selectedId, setSelected } = useSelectedService();
-
-function openService(row: LandingServiceRow): void {
-  setSelected(row.serviceId);
-}
 const { layers } = useLayers();
 const layer = computed<LayerDef | null>(() => layers.value.find((l) => l.key === layerKey.value) ?? null);
 const store = useSetupStore();
@@ -68,43 +58,12 @@ const safeCfg = computed(() => cfg.value?.landing ?? {
   style: 'table' as const,
 });
 const landing = useLayerLanding(safeLayer, safeCfg);
-
-// Constellation uses the full sampled set (up to ~25 services) so the
-// long tail shows. Table shows the same set, sortable by any column.
 const sampled = computed(() => landing.data.value?.sampledRows ?? landing.rows.value ?? []);
+const { selectedId } = useSelectedService();
 
-// Table sort state. Defaults to descending on the layer's orderBy
-// metric — matches the BFF's pre-sort so the visible order is stable
-// when the user hasn't picked a different column yet.
-const sortKey = computed(() => cfg.value?.landing.orderBy ?? 'cpm');
-const sortMetric = ref<string>(sortKey.value);
-const sortDir = ref<'asc' | 'desc'>('desc');
-function setSort(metric: string): void {
-  if (sortMetric.value === metric) {
-    sortDir.value = sortDir.value === 'desc' ? 'asc' : 'desc';
-  } else {
-    sortMetric.value = metric;
-    sortDir.value = 'desc';
-  }
-}
-const sortedRows = computed(() => {
-  const rows = [...sampled.value];
-  const key = sortMetric.value;
-  const dir = sortDir.value === 'desc' ? -1 : 1;
-  rows.sort((a, b) => {
-    const av = a.metrics[key];
-    const bv = b.metrics[key];
-    if (av == null && bv == null) return a.serviceName.localeCompare(b.serviceName);
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    return (av - bv) * dir;
-  });
-  return rows;
-});
-
-// Apdex distribution — bucket counts driven by the standard apdex
-// bands. When no apdex column exists in the setup, the right column
-// drops the tile so we don't show a hard-coded zero.
+// Apdex distribution — driven by the per-service apdex column when the
+// operator has it configured. Skips rendering when the column is
+// missing so we don't show a hard-coded zero histogram.
 const apdexBuckets = computed(() => {
   const buckets = [
     { label: '0.95 – 1.00', min: 0.95, color: 'var(--sw-ok)', count: 0 },
@@ -129,6 +88,68 @@ const hasApdex = computed(() =>
 );
 const totalApdex = computed(() => apdexBuckets.value.reduce((a, b) => a + b.count, 0));
 
+interface Drill {
+  to: string;
+  label: string;
+  desc: string;
+  enabled: boolean;
+}
+const drills = computed<Drill[]>(() => {
+  const L = layer.value;
+  if (!L) return [];
+  const k = layerKey.value;
+  const q = selectedId.value ? `?service=${encodeURIComponent(selectedId.value)}` : '';
+  const out: Drill[] = [];
+  if (L.caps.dashboards) {
+    out.push({
+      to: `/layer/${k}/dashboards${q}`,
+      label: 'Dashboards',
+      desc: 'Live widget grid driven by booster-ui templates.',
+      enabled: true,
+    });
+  }
+  if (L.slots.instances) {
+    out.push({
+      to: `/layer/${k}/instances${q}`,
+      label: cfg.value?.slots.instances || L.slots.instances || 'Instances',
+      desc: 'Per-instance metrics, agent status, JVM/process drill.',
+      enabled: false,
+    });
+  }
+  if (L.slots.endpoints) {
+    out.push({
+      to: `/layer/${k}/endpoints${q}`,
+      label: cfg.value?.slots.endpoints || L.slots.endpoints || 'Endpoints',
+      desc: 'API endpoints exposed by this service.',
+      enabled: false,
+    });
+  }
+  if (L.caps.traces) {
+    out.push({
+      to: `/layer/${k}/traces${q}`,
+      label: 'Traces',
+      desc: 'Trace explorer scoped to this service.',
+      enabled: false,
+    });
+  }
+  if (L.caps.logs) {
+    out.push({
+      to: `/layer/${k}/logs${q}`,
+      label: 'Logs',
+      desc: 'Log explorer scoped to this service.',
+      enabled: false,
+    });
+  }
+  if (L.caps.profiling) {
+    out.push({
+      to: `/layer/${k}/profiling${q}`,
+      label: 'Profiling',
+      desc: 'Flame graphs + sampled stacks.',
+      enabled: false,
+    });
+  }
+  return out;
+});
 const reachable = computed(() => landing.data.value?.reachable !== false);
 </script>
 
@@ -140,59 +161,35 @@ const reachable = computed(() => landing.data.value?.reachable !== false);
     </div>
 
     <div class="grid">
-      <section class="sw-card services-table-card">
+      <section class="sw-card drill-card">
         <div class="card-head">
-          <h4>Services in this layer</h4>
-          <span class="sub">{{ sampled.length }} sampled · click a column to re-sort · row click selects</span>
-          <RouterLink class="all-link" to="/setup">Customize</RouterLink>
+          <h4>Drill into the selected service</h4>
+          <span class="sub">other tabs auto-scope via <code>?service=</code></span>
         </div>
-        <table v-if="sortedRows.length > 0" class="sw-table">
-          <thead>
-            <tr>
-              <th class="svc-col">Service</th>
-              <th
-                v-for="c in cfg?.landing.columns ?? []"
-                :key="c.metric"
-                class="num sortable"
-                :class="{ on: sortMetric === c.metric }"
-                :title="`${metricMeta(c.metric).longLabel}\n\n${metricMeta(c.metric).tip}`"
-                @click="setSort(c.metric)"
-              >
-                {{ c.label }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
-                <span v-if="sortMetric === c.metric" class="caret">{{ sortDir === 'desc' ? '▼' : '▲' }}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in sortedRows"
-              :key="row.serviceId"
-              class="clickable"
-              :class="{ active: row.serviceId === selectedId }"
-              @click="openService(row)"
-            >
-              <td class="svc-col" :title="row.serviceName">
-                <span class="svc-link">{{ row.shortName || row.serviceName }}</span>
-              </td>
-              <td
-                v-for="c in cfg?.landing.columns ?? []"
-                :key="c.metric"
-                class="num"
-                :class="{ muted: row.metrics[c.metric] == null }"
-              >
-                {{ fmtMetric(row.metrics[c.metric]) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else-if="landing.isLoading.value" class="empty">Loading…</p>
-        <p v-else class="empty">No services to show.</p>
+        <div class="drill-grid">
+          <RouterLink
+            v-for="d in drills"
+            :key="d.label"
+            :to="d.to"
+            class="drill"
+            :class="{ disabled: !d.enabled }"
+          >
+            <div class="drill-head">
+              <span class="drill-label">{{ d.label }}</span>
+              <span v-if="!d.enabled" class="sw-badge">soon</span>
+            </div>
+            <p class="drill-desc">{{ d.desc }}</p>
+          </RouterLink>
+          <p v-if="drills.length === 0" class="empty">
+            No deep-dive views configured for this layer.
+          </p>
+        </div>
       </section>
 
       <section v-if="hasApdex && totalApdex > 0" class="sw-card apdex-card">
         <div class="card-head">
           <h4>Apdex distribution</h4>
-          <span class="sub">services bucketed</span>
+          <span class="sub">{{ totalApdex }} services bucketed</span>
         </div>
         <div class="apdex-body">
           <div v-for="b in apdexBuckets" :key="b.label" class="apdex-row">
@@ -216,7 +213,6 @@ const reachable = computed(() => landing.data.value?.reachable !== false);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 14px 0 0;
 }
 .banner.err {
   padding: 8px 12px;
@@ -228,7 +224,7 @@ const reachable = computed(() => landing.data.value?.reachable !== false);
 }
 .grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: 1.4fr 1fr;
   gap: 14px;
   align-items: start;
 }
@@ -244,98 +240,62 @@ const reachable = computed(() => landing.data.value?.reachable !== false);
   font-size: 12px;
   font-weight: 600;
   color: var(--sw-fg-0);
-  letter-spacing: -0.01em;
 }
 .card-head .sub {
   font-size: 10.5px;
   color: var(--sw-fg-3);
 }
-.card-head .all-link {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--sw-accent-2);
-  text-decoration: none;
-}
-.card-body {
-  padding: 14px;
-}
-.empty {
-  margin: 0;
-  padding: 24px 8px;
-  text-align: center;
-  font-size: 11.5px;
-  color: var(--sw-fg-3);
-}
-.services-table-card .sw-table th {
+.card-head .sub code {
+  font-family: var(--sw-mono);
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--sw-fg-3);
-  text-align: left;
-  font-weight: 500;
-}
-.services-table-card .sw-table th.num,
-.services-table-card .sw-table td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.services-table-card .sw-table td {
-  font-size: 11.5px;
-  color: var(--sw-fg-1);
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--sw-line);
-}
-.services-table-card .sw-table td.muted {
-  color: var(--sw-fg-3);
-}
-.services-table-card .sw-table tr.clickable {
-  cursor: pointer;
-}
-.services-table-card .sw-table tr.clickable:hover {
   background: var(--sw-bg-2);
+  padding: 0 3px;
+  border-radius: 2px;
 }
-.svc-link {
-  color: var(--sw-fg-0);
+.drill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
 }
-.services-table-card .sw-table tr.clickable:hover .svc-link {
-  color: var(--sw-accent-2);
+.drill {
+  background: var(--sw-bg-1);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.12s, background 0.12s;
 }
-.services-table-card .sw-table tr.clickable.active {
-  background: var(--sw-accent-soft);
+.drill:hover {
+  background: var(--sw-bg-2);
+  border-color: var(--sw-line-3);
 }
-.services-table-card .sw-table tr.clickable.active .svc-link {
-  color: var(--sw-accent-2);
-  font-weight: 600;
+.drill.disabled {
+  border-style: dashed;
+  opacity: 0.7;
+  pointer-events: none;
 }
-.services-table-card .sw-table th.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-.services-table-card .sw-table th.sortable:hover {
-  color: var(--sw-fg-1);
-}
-.services-table-card .sw-table th.sortable.on {
-  color: var(--sw-accent-2);
-}
-.services-table-card .sw-table th .caret {
-  margin-left: 3px;
-  font-size: 9px;
-}
-.apdex-card .card-head {
+.drill-head {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--sw-line);
+  justify-content: space-between;
+  gap: 6px;
 }
-.apdex-card .card-head h4 {
-  margin: 0;
+.drill-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--sw-fg-0);
 }
-.apdex-card .card-head .sub {
+.drill-desc {
+  margin: 4px 0 0;
   font-size: 10.5px;
+  color: var(--sw-fg-3);
+  line-height: 1.5;
+}
+.empty {
+  margin: 0;
+  font-size: 11.5px;
   color: var(--sw-fg-3);
 }
 .apdex-body {
@@ -374,26 +334,6 @@ const reachable = computed(() => landing.data.value?.reachable !== false);
   color: var(--sw-fg-0);
   font-variant-numeric: tabular-nums;
 }
-.svc-col {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-th .unit {
-  margin-left: 3px;
-  color: var(--sw-fg-3);
-  font-weight: 400;
-}
-.phase-note {
-  margin: 0;
-  padding: 10px 14px;
-  font-size: 10.5px;
-  color: var(--sw-fg-3);
-  border-top: 1px dashed var(--sw-line);
-  background: var(--sw-bg-1);
-}
-
 @media (max-width: 1100px) {
   .grid {
     grid-template-columns: 1fr;

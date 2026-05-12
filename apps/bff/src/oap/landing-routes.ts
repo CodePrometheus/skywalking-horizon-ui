@@ -49,7 +49,7 @@ import type { ConfigSource } from '../config/loader.js';
 import type { SessionStore } from '../auth/sessions.js';
 import { requireAuth } from '../auth/middleware.js';
 import { graphqlPost } from './graphql-client.js';
-import { expressionForServiceMetric } from './mqe-catalog.js';
+import { expressionForServiceMetricSeries } from './mqe-catalog.js';
 
 export interface LandingRouteDeps {
   config: ConfigSource;
@@ -141,11 +141,20 @@ function defaultWindow(): Window {
   return { start: fmtMinute(start), end: fmtMinute(end), step: 'MINUTE' };
 }
 
-/** Pick the expression to fire for `(metric, layer)`. Honors the operator's
- *  explicit `mqe` override when set. */
+/**
+ * Pick the time-series expression to fire for `(metric, layer)`. We
+ * always go through the series variant (`avg(...)` stripped) so OAP
+ * returns TIME_SERIES_VALUES; the BFF then collapses to a scalar via
+ * bucket-average. This way every metric supports a sparkline AND a
+ * KPI cell from the same query — no double round-trip.
+ *
+ * Honors the operator's explicit `mqe` override when set; the override
+ * is assumed to already be the desired shape (we don't try to strip avg
+ * from custom expressions).
+ */
 function resolveMqe(metric: string, mqe: string | undefined, layerKey: string): string | null {
   if (mqe && mqe.trim().length > 0) return mqe.trim();
-  return expressionForServiceMetric(metric, layerKey);
+  return expressionForServiceMetricSeries(metric, layerKey);
 }
 
 /** Apply optional scale + precision to a raw MQE value. */
@@ -282,7 +291,7 @@ export function registerLandingRoute(app: FastifyInstance, deps: LandingRouteDep
           durationStart: window.start,
           durationEnd: window.end,
           rows: [],
-          aggregates: { serviceCount: 0, metrics: {} },
+          aggregates: { serviceCount: 0, metrics: {}, seriesByMetric: {} },
           reachable: false,
           error: err instanceof Error ? err.message : String(err),
         };
@@ -300,7 +309,7 @@ export function registerLandingRoute(app: FastifyInstance, deps: LandingRouteDep
           durationStart: window.start,
           durationEnd: window.end,
           rows: [],
-          aggregates: { serviceCount: totalServiceCount, metrics: {} },
+          aggregates: { serviceCount: totalServiceCount, metrics: {}, seriesByMetric: {} },
           reachable: true,
         };
         return reply.send(body);
@@ -337,13 +346,29 @@ export function registerLandingRoute(app: FastifyInstance, deps: LandingRouteDep
         }
       }
 
-      // Step 3 — assemble per-row metrics (pre-aggregation, post-scale).
+      // Step 3 — assemble per-row metrics + retain the per-bucket
+      // series so the layer header can render a sparkline under each
+      // KPI (aggregated point-wise across topN below).
+      const seriesByServiceMetric = new Map<string, Map<string, Array<number | null>>>();
       const rows: LandingServiceRow[] = sampled.map((svc, sIdx) => {
         const metrics: Record<string, number | null> = {};
+        const seriesMap = new Map<string, Array<number | null>>();
         resolved.forEach(({ column }, cIdx) => {
-          const raw = collapseToScalar(mqeData[alias(sIdx, cIdx)]);
-          metrics[column.metric] = postProcess(raw, column.scale, column.precision);
+          const raw = mqeData[alias(sIdx, cIdx)];
+          const series = collapseToSeries(raw);
+          if (series) {
+            seriesMap.set(
+              column.metric,
+              series.map((v) => postProcess(v, column.scale, column.precision)),
+            );
+          }
+          metrics[column.metric] = postProcess(
+            collapseToScalar(raw),
+            column.scale,
+            column.precision,
+          );
         });
+        seriesByServiceMetric.set(svc.id, seriesMap);
         return {
           serviceId: svc.id,
           serviceName: svc.value,
@@ -430,6 +455,7 @@ export function registerLandingRoute(app: FastifyInstance, deps: LandingRouteDep
       const aggregates: LandingAggregates = {
         serviceCount: totalServiceCount,
         metrics: {},
+        seriesByMetric: {},
       };
       for (const col of cfg.columns) {
         const kind: AggregationKind = col.aggregation ?? 'avg';
@@ -437,6 +463,13 @@ export function registerLandingRoute(app: FastifyInstance, deps: LandingRouteDep
           topRows.map((r) => r.metrics[col.metric] ?? null),
           kind,
         );
+        // Per-column aggregated time series — derived from the per-service
+        // series we retained in step 3, aggregated point-wise.
+        const colSeries = topRows.map(
+          (r) => seriesByServiceMetric.get(r.serviceId)?.get(col.metric),
+        );
+        const agg = aggregateSeries(colSeries, kind);
+        if (agg) aggregates.seriesByMetric[col.metric] = agg;
       }
       if (throughputCol) {
         const kind: AggregationKind = throughputCol.aggregation ?? 'sum';

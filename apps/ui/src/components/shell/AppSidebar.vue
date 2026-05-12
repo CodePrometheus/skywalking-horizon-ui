@@ -283,14 +283,6 @@ const sections: NavSection[] = [
           >
             <Icon name="flame" /><span>Profiling</span>
           </RouterLink>
-          <RouterLink
-            v-if="L.caps.events"
-            :to="`/layer/${L.key}/events`"
-            class="sw-nav-item"
-            :class="{ 'is-active': isActive(`/layer/${L.key}/events`) }"
-          >
-            <Icon name="event" /><span>Events</span>
-          </RouterLink>
         </div>
       </template>
 

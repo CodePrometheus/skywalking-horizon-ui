@@ -26,12 +26,14 @@
       default entry; the cross-layer Overview lives at `/`.
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
 import type { LayerDef } from '@skywalking-horizon-ui/api-client';
 import Icon from '@/components/icons/Icon.vue';
+import Sparkline from '@/components/charts/Sparkline.vue';
 import LayerServiceSelector from './LayerServiceSelector.vue';
 import { metricMeta } from '@/composables/metricCatalog';
+import { colorForMetric } from '@/composables/metricColor';
 import { useLayerLanding } from '@/composables/useLayerLanding';
 import { useLayers } from '@/composables/useLayers';
 import { useSelectedService } from '@/composables/useSelectedService';
@@ -40,7 +42,7 @@ import { fmtMetric } from '@/utils/formatters';
 
 const route = useRoute();
 const layerKey = computed(() => String(route.params.layerKey ?? ''));
-const { layers, hasTopology } = useLayers();
+const { layers } = useLayers();
 const layer = computed<LayerDef | null>(() => {
   const found = layers.value.find((l) => l.key === layerKey.value);
   return found ?? null;
@@ -76,6 +78,26 @@ const aggregates = computed(() => landing.data.value?.aggregates ?? null);
 const { selectedId, setSelected } = useSelectedService();
 const sampledServices = computed(() => landing.data.value?.sampledRows ?? landing.rows.value ?? []);
 const selectorColumns = computed(() => safeCfg.value.columns);
+const selectedRow = computed(
+  () =>
+    sampledServices.value.find((s) => s.serviceId === selectedId.value) ??
+    sampledServices.value[0] ??
+    null,
+);
+const selectedName = computed(
+  () => selectedRow.value?.serviceName ?? (sampledServices.value.length > 0 ? 'pick a service' : '—'),
+);
+
+// Picker toggle state. Lives at the shell level so the header's Switch
+// button and the picker section render against the same state.
+const pickerOpen = ref(false);
+function togglePicker(): void {
+  pickerOpen.value = !pickerOpen.value;
+}
+function pickService(id: string): void {
+  setSelected(id);
+  pickerOpen.value = false;
+}
 
 // ── Header identity ──────────────────────────────────────────────────
 function initialsFor(name: string): string {
@@ -90,40 +112,6 @@ const displayName = computed(() => cfg.value?.displayName || layer.value?.name |
 const initials = computed(() => initialsFor(displayName.value));
 
 // ── Tabs ─────────────────────────────────────────────────────────────
-interface Tab {
-  to: string;
-  label: string;
-  icon?: string;
-}
-const tabs = computed<Tab[]>(() => {
-  if (!layer.value) return [];
-  const L = layer.value;
-  const out: Tab[] = [];
-  const base = `/layer/${L.key}`;
-  if (L.slots.services) out.push({ to: `${base}/services`, label: cfg.value?.slots.services || L.slots.services || 'Services' });
-  if (L.slots.instances) out.push({ to: `${base}/instances`, label: cfg.value?.slots.instances || L.slots.instances });
-  if (L.slots.endpoints) out.push({ to: `${base}/endpoints`, label: cfg.value?.slots.endpoints || L.slots.endpoints });
-  if (hasTopology(L)) out.push({ to: `${base}/topology`, label: 'Topology' });
-  if (L.caps.endpointDependency) {
-    out.push({
-      to: `${base}/dependency`,
-      label: cfg.value?.slots.endpointDependency || `${cfg.value?.slots.endpoints || 'Endpoint'} dependency`,
-    });
-  }
-  if (L.caps.dashboards) out.push({ to: `${base}/dashboards`, label: 'Dashboards' });
-  if (L.caps.traces) out.push({ to: `${base}/traces`, label: 'Traces' });
-  if (L.caps.logs) out.push({ to: `${base}/logs`, label: 'Logs' });
-  if (L.caps.profiling) out.push({ to: `${base}/profiling`, label: 'Profiling' });
-  // `events` cap intentionally omitted — operators rely on the sidebar
-  // for cross-cutting event views; per-layer Events will get its own
-  // design pass later.
-  return out;
-});
-
-function isTabActive(to: string): boolean {
-  return route.path === to || route.path.startsWith(to + '/');
-}
-
 // ── Header KPI strip ─────────────────────────────────────────────────
 // Picks at most 5 metrics from the layer's setup columns; service count
 // always leads. Each KPI is read from /api/layer/:key/landing.aggregates,
@@ -132,25 +120,44 @@ interface HeaderKpi {
   label: string;
   value: number | null;
   unit?: string;
-  color?: string;
-  isService?: boolean;
+  /** CSS color for the value text — per-metric color band so the
+   *  header reads at a glance (cpm orange, p99 yellow, sla purple,
+   *  err red — matches the design's landing-layer KPI row). */
+  color: string;
+  /** Trend series — rendered as a small inline sparkline under the
+   *  value when present. */
+  spark?: Array<number | null>;
 }
+/**
+ * Header KPIs scope to the *selected service*. Falls back to the
+ * layer-wide aggregates when no service is selectable (e.g. before
+ * data loads). The per-service sparkline comes from `row.spark` when
+ * present; otherwise falls through to the layer-wide
+ * `seriesByMetric[col.metric]` so the trend area never goes blank just
+ * because the BFF only built one spark series.
+ */
 const headerKpis = computed<HeaderKpi[]>(() => {
   const L = layer.value;
   if (!L) return [];
   const c = cfg.value;
   if (!c) return [];
   const a = aggregates.value;
-  const svcCount = a?.serviceCount ?? L.serviceCount;
-  const out: HeaderKpi[] = [
-    { label: c.slots.services || 'Services', value: svcCount, color: L.color, isService: true },
-  ];
+  const row = selectedRow.value;
+  const out: HeaderKpi[] = [];
   for (const col of c.landing.columns.slice(0, 5)) {
     const m = metricMeta(col.metric);
+    const value = row ? row.metrics[col.metric] ?? null : a?.metrics?.[col.metric] ?? null;
     out.push({
       label: col.label || m.label,
-      value: a?.metrics?.[col.metric] ?? null,
+      value,
       unit: col.unit || m.unit,
+      color: colorForMetric(col.metric),
+      // Prefer the selected service's spark; otherwise reuse the
+      // layer-aggregate series.
+      spark:
+        row?.spark && row.spark.length > 1
+          ? row.spark
+          : a?.seriesByMetric?.[col.metric],
     });
   }
   return out;
@@ -167,66 +174,74 @@ const sourceText = computed(() => {
 <template>
   <div class="layer-shell">
     <header v-if="layer" class="sw-card layer-head">
-      <div class="head-row">
-        <div class="identity">
-          <div class="icon-tile" :style="{ background: layer.color }">{{ initials }}</div>
-          <div class="identity-text">
-            <div class="title-row">
-              <h1>{{ displayName }}</h1>
-              <span class="sw-tag layer-tag">LAYER</span>
-              <span class="sw-tag">{{ sourceText }}</span>
-              <span v-if="layer.serviceCount === 0" class="sw-badge warn">no services</span>
-              <span v-else-if="!layer.active" class="sw-badge">no data</span>
-            </div>
-            <div class="sub">
-              {{ layer.serviceCount >= 0 ? `${layer.serviceCount} ${(cfg?.slots.services || 'services').toLowerCase()}` : 'no service data' }}
-              <span v-if="layer.documentLink">·
-                <a :href="layer.documentLink" target="_blank" rel="noopener noreferrer">docs ↗</a>
-              </span>
-            </div>
+      <!-- Row 1: layer identity. -->
+      <div class="layer-id-row">
+        <div class="icon-tile" :style="{ background: layer.color }">{{ initials }}</div>
+        <div class="identity-text">
+          <div class="title-row">
+            <h1>{{ displayName }}</h1>
+            <span class="sw-tag layer-tag">LAYER</span>
+            <span class="sw-tag">{{ sourceText }}</span>
+            <span v-if="layer.serviceCount === 0" class="sw-badge warn">no services</span>
+            <span v-else-if="!layer.active" class="sw-badge">no data</span>
           </div>
-        </div>
-        <div class="kpi-strip">
-          <div v-for="(k, i) in headerKpis" :key="i" class="kpi">
-            <div class="kpi-label">{{ k.label }}</div>
-            <div class="kpi-value" :style="k.color && k.isService ? { color: k.color } : undefined">
-              <span :class="{ muted: k.value == null }">{{ fmtMetric(k.value) }}</span>
-              <span v-if="k.unit" class="kpi-unit">{{ k.unit }}</span>
-            </div>
+          <div class="sub">
+            {{ layer.serviceCount >= 0 ? `${layer.serviceCount} ${(cfg?.slots.services || 'services').toLowerCase()}` : 'no service data' }}
+            <span v-if="layer.documentLink">·
+              <a :href="layer.documentLink" target="_blank" rel="noopener noreferrer">docs ↗</a>
+            </span>
           </div>
         </div>
       </div>
 
+      <!-- Row 2: Switch button + selected service name + KPI strip.
+           Merged into the same card as the layer header so there's no
+           duplicate "Selected service" zone elsewhere. -->
+      <div v-if="sampledServices.length > 0" class="service-row">
+        <button
+          class="sw-btn switch"
+          type="button"
+          :class="{ open: pickerOpen }"
+          @click="togglePicker"
+        >
+          <span class="caret">▾</span>
+          <span class="svc-name">{{ selectedName }}</span>
+        </button>
+        <div class="kpi-strip">
+          <div v-for="(k, i) in headerKpis" :key="i" class="kpi">
+            <div class="kpi-label">{{ k.label }}</div>
+            <div class="kpi-value" :style="{ color: k.color }">
+              <span :class="{ muted: k.value == null }">{{ fmtMetric(k.value) }}</span>
+              <span v-if="k.unit" class="kpi-unit">{{ k.unit }}</span>
+            </div>
+            <Sparkline
+              v-if="k.spark && k.spark.length > 1"
+              class="kpi-spark"
+              :values="k.spark"
+              :width="84"
+              :height="18"
+              :color="k.color"
+              :stroke="1.25"
+            />
+            <span v-else class="kpi-spark-empty">&nbsp;</span>
+          </div>
+        </div>
+      </div>
     </header>
 
-    <!-- Service selector sits between the layer header and the tab
-         strip — operators pick context first, then drill into the
-         specific tab they want. Selection (URL ?service=) carries
-         across every tab. -->
+    <!-- Picker dropdown — only visible when the Switch button is open.
+         Sits below the General header so the page reads top-to-bottom:
+         layer identity → expanded service picker → sub-route body. -->
     <LayerServiceSelector
-      v-if="layer && sampledServices.length > 0"
+      v-if="layer && pickerOpen && sampledServices.length > 0"
       :services="sampledServices"
       :columns="selectorColumns"
       :selected-id="selectedId"
       :accent="layer.color"
-      @select="setSelected"
+      @select="pickService"
     />
 
-    <nav v-if="layer && tabs.length > 0" class="sw-card tab-strip-wrap">
-      <div class="tab-strip">
-        <RouterLink
-          v-for="t in tabs"
-          :key="t.to"
-          :to="t.to"
-          class="tab"
-          :class="{ on: isTabActive(t.to) }"
-        >
-          {{ t.label }}
-        </RouterLink>
-      </div>
-    </nav>
-
-    <div v-else class="missing">
+    <div v-if="!layer" class="missing">
       <div class="sw-card missing-card">
         <Icon name="alert" :size="18" />
         <div>
@@ -239,15 +254,9 @@ const sourceText = computed(() => {
       </div>
     </div>
 
+    <!-- Sub-route body. No tab strip — operators navigate via the
+         per-layer entries in the left sidebar. -->
     <div v-if="layer" class="tab-body">
-      <LayerServiceSelector
-        v-if="sampledServices.length > 0"
-        :services="sampledServices"
-        :columns="selectorColumns"
-        :selected-id="selectedId"
-        :accent="layer.color"
-        @select="setSelected"
-      />
       <RouterView />
     </div>
   </div>
@@ -263,18 +272,55 @@ const sourceText = computed(() => {
   padding: 14px;
   margin-bottom: 14px;
 }
-.head-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
-  flex-wrap: wrap;
-}
-.identity {
+.layer-id-row {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
-  flex: 1 1 320px;
+}
+.identity-text {
+  min-width: 0;
+}
+.service-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--sw-line);
+}
+.switch {
+  /* Merged Switch button — sits at the start of the service row, ahead
+   * of the KPI strip. Click opens the picker dropdown below. */
+  height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-color: var(--sw-line-2);
+}
+.switch:hover {
+  background: var(--sw-bg-2);
+}
+.switch.open {
+  background: var(--sw-bg-2);
+  border-color: var(--sw-line-3);
+}
+.switch .caret {
+  font-size: 10px;
+  color: var(--sw-fg-3);
+  transition: transform 0.12s;
+}
+.switch.open .caret {
+  transform: rotate(180deg);
+}
+.switch .svc-name {
+  font-family: var(--sw-mono);
+  color: var(--sw-fg-0);
+  letter-spacing: -0.01em;
 }
 .icon-tile {
   width: 40px;
@@ -291,9 +337,6 @@ const sourceText = computed(() => {
    * white initials stay legible across the palette range. */
   background-blend-mode: multiply;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-.identity-text {
-  min-width: 0;
 }
 .title-row {
   display: flex;
@@ -325,14 +368,14 @@ const sourceText = computed(() => {
 }
 .kpi-strip {
   display: flex;
-  gap: 20px;
+  gap: 22px;
   flex-wrap: wrap;
   align-items: flex-end;
   margin-left: auto;
 }
 .kpi {
   text-align: right;
-  min-width: 60px;
+  min-width: 80px;
 }
 .kpi-label {
   font-size: 10px;
@@ -342,48 +385,33 @@ const sourceText = computed(() => {
   margin-bottom: 2px;
 }
 .kpi-value {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
-  color: var(--sw-fg-0);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
 .kpi-value .muted {
   color: var(--sw-fg-3);
 }
+.kpi-value > span:first-child {
+  /* Inherit color from the parent .kpi-value style binding (per-metric
+   * color band) — the muted modifier below overrides when value is null. */
+  color: inherit;
+}
 .kpi-unit {
   font-size: 10px;
   color: var(--sw-fg-3);
   margin-left: 2px;
 }
-.tab-strip-wrap {
-  margin-bottom: 14px;
-  padding: 0;
+.kpi-spark {
+  display: block;
+  margin-top: 4px;
+  margin-left: auto;
 }
-.tab-strip {
-  display: flex;
-  gap: 2px;
-  padding: 0 14px;
-  overflow-x: auto;
-}
-.tab {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--sw-fg-2);
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  white-space: nowrap;
-  transition: color 0.12s, border-color 0.12s;
-}
-.tab:hover {
-  color: var(--sw-fg-1);
-}
-.tab.on {
-  color: var(--sw-fg-0);
-  font-weight: 600;
-  border-bottom-color: var(--sw-accent);
+.kpi-spark-empty {
+  display: block;
+  height: 16px;
+  margin-top: 4px;
 }
 .tab-body {
   /* Sub-routes own their own internal layout / padding. */

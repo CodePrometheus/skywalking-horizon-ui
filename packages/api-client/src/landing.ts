@@ -53,6 +53,12 @@ export interface LandingAggregates {
   /** Aggregated value per column metric, keyed by metric short key.
    *  `null` when the column has no MQE mapping or every cell failed. */
   metrics: Record<string, number | null>;
+  /** Per-column aggregated time series (one entry per bucket in the
+   *  default MINUTE-stepped window). Aggregation kind comes from the
+   *  column's `aggregation` field — sum for cpm-shaped throughput
+   *  metrics, avg for ratio/latency metrics. Used by the per-layer
+   *  header to render a trend line under each KPI. */
+  seriesByMetric: Record<string, Array<number | null>>;
   /** Aggregated sparkline series for the `throughput.metric` (or `spark`)
    *  using the throughput aggregation. `null` when not configured. */
   spark?: Array<number | null> | null;

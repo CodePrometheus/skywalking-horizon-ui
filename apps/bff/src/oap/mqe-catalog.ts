@@ -156,3 +156,22 @@ export function resolveColumnExpressions(
     expression: expressionForServiceMetric(c.metric, layerKey),
   }));
 }
+
+/**
+ * Time-series variant of the catalog expression. The default catalog
+ * wraps most metrics in `avg(...)` which makes OAP return a SINGLE_VALUE
+ * — fine for KPI cells, useless for sparklines (one bucket can't
+ * render as a line). This helper strips the avg wrappers so OAP returns
+ * the full TIME_SERIES_VALUES at the configured step granularity. The
+ * caller can still recover the scalar by averaging the buckets.
+ */
+export function expressionForServiceMetricSeries(
+  metricKey: string,
+  layerKey: string,
+): string | null {
+  const scalar = expressionForServiceMetric(metricKey, layerKey);
+  if (!scalar) return null;
+  // Strip every `avg(...)` wrapper. Matches expressions like
+  // `avg(service_sla)/100`, `100 - avg(service_sla)/100`, etc.
+  return scalar.replace(/avg\(([^()]+)\)/g, '$1');
+}

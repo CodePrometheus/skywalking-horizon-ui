@@ -15,20 +15,18 @@
   limitations under the License.
 -->
 <!--
-  Sticky selector zone at the top of every per-layer tab. The currently
-  selected service is pinned (name + inline KPIs); click "switch" to
-  expand a filterable + paginated table of all sampled services. Picking
-  a row updates the page-wide selection (driven via URL `?service=`),
-  which downstream widgets (constellation, dashboards, traces tab once
-  it lands) consume to scope their queries.
-
-  Default selection: the first row of `services` (sorted desc by orderBy
-  in the BFF), so opening a layer lands on the highest-traffic service.
+  Expanded service-picker dropdown — rendered by LayerShell beneath the
+  layer header card when the Switch button is open. Search by name +
+  pagination over the sampled service set; each row uses the design's
+  "Services in this layer" styling (status pulse dot + threshold-colored
+  metric cells). Picking a row emits `select(id)`, which LayerShell uses
+  to update the URL `?service=` state and close the dropdown.
 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { LandingColumn, LandingServiceRow } from '@skywalking-horizon-ui/api-client';
 import { metricMeta } from '@/composables/metricCatalog';
+import { statusForMetrics, thresholdColor } from '@/composables/metricColor';
 import { fmtMetric } from '@/utils/formatters';
 
 const props = withDefaults(
@@ -36,9 +34,7 @@ const props = withDefaults(
     services: ReadonlyArray<LandingServiceRow>;
     columns: ReadonlyArray<LandingColumn>;
     selectedId: string | null;
-    /** Layer color — used for the pinned service dot. */
     accent?: string;
-    /** Rows per page in expanded mode. */
     pageSize?: number;
   }>(),
   {
@@ -48,29 +44,13 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ (e: 'select', id: string): void }>();
 
-const expanded = ref(false);
 const filter = ref('');
 const page = ref(0);
 
-// Default-select highest-traffic (first row) on initial render when the
-// caller hasn't set anything. Watch responds to delayed data loads too.
-watch(
-  () => props.services,
-  (rows) => {
-    if (!props.selectedId && rows.length > 0) emit('select', rows[0].serviceId);
-  },
-  { immediate: true },
-);
-
-const selectedRow = computed<LandingServiceRow | null>(
-  () => props.services.find((s) => s.serviceId === props.selectedId) ?? props.services[0] ?? null,
-);
-
 const filtered = computed(() => {
   const q = filter.value.trim().toLowerCase();
-  const base = props.services;
-  if (q.length === 0) return base;
-  return base.filter((s) => s.serviceName.toLowerCase().includes(q));
+  if (q.length === 0) return props.services;
+  return props.services.filter((s) => s.serviceName.toLowerCase().includes(q));
 });
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / props.pageSize)));
 const currentPage = computed(() => Math.min(page.value, pageCount.value - 1));
@@ -80,206 +60,88 @@ const visible = computed(() => {
 });
 watch(filter, () => (page.value = 0));
 
-function selectAndCollapse(id: string): void {
-  emit('select', id);
-  expanded.value = false;
-}
-function toggle(): void {
-  expanded.value = !expanded.value;
+function colorForStatus(s: 'ok' | 'warn' | 'err'): string {
+  return s === 'err' ? 'var(--sw-err)' : s === 'warn' ? 'var(--sw-warn)' : 'var(--sw-ok)';
 }
 </script>
 
 <template>
-  <section class="sw-card selector" :class="{ expanded }">
-    <div class="pin">
-      <span class="dot" :style="{ background: accent }" />
-      <div class="pin-title">
-        <span class="kicker">Selected {{ services.length > 0 ? 'service' : '' }}</span>
-        <div class="name">
-          {{ selectedRow?.serviceName || (services.length > 0 ? 'pick a service' : '—') }}
-        </div>
-      </div>
-      <div class="pin-kpis">
-        <div
-          v-for="c in columns"
-          :key="c.metric"
-          class="pin-kpi"
-          :title="`${metricMeta(c.metric).longLabel}\n\n${metricMeta(c.metric).tip}`"
-        >
-          <span class="pin-kpi-label">{{ c.label }}<span v-if="c.unit" class="unit">{{ c.unit }}</span></span>
-          <span class="pin-kpi-value" :class="{ muted: selectedRow?.metrics[c.metric] == null }">
-            {{ fmtMetric(selectedRow?.metrics[c.metric] ?? null) }}
-          </span>
-        </div>
-      </div>
-      <button class="sw-btn ghost small toggle" type="button" @click="toggle">
-        <span>{{ expanded ? 'Close' : 'Switch' }}</span>
-        <span class="caret" :class="{ open: expanded }">▾</span>
-      </button>
-    </div>
-
-    <div v-if="expanded" class="picker">
-      <div class="picker-head">
-        <input
-          v-model="filter"
-          class="search"
-          placeholder="filter by name…"
-          spellcheck="false"
-          autocomplete="off"
-        />
-        <span class="count">
-          {{ filtered.length }} of {{ services.length }}
-        </span>
-      </div>
-      <table class="sw-table picker-table">
-        <thead>
-          <tr>
-            <th class="svc-col">Service</th>
-            <th v-for="c in columns" :key="c.metric" class="num">
-              {{ c.label }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in visible"
-            :key="row.serviceId"
-            class="row"
-            :class="{ active: row.serviceId === selectedRow?.serviceId }"
-            @click="selectAndCollapse(row.serviceId)"
+  <section class="sw-card picker">
+    <header class="picker-head">
+      <input
+        v-model="filter"
+        class="search"
+        placeholder="filter by name…"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <span class="count">{{ filtered.length }} of {{ services.length }}</span>
+    </header>
+    <table class="sw-table picker-table">
+      <thead>
+        <tr>
+          <th class="svc-col">Service</th>
+          <th
+            v-for="c in columns"
+            :key="c.metric"
+            class="num"
+            :title="`${metricMeta(c.metric).longLabel}\n\n${metricMeta(c.metric).tip}`"
           >
-            <td class="svc-col" :title="row.serviceName">
-              <span class="name-text">{{ row.shortName || row.serviceName }}</span>
-            </td>
-            <td
-              v-for="c in columns"
-              :key="c.metric"
-              class="num"
-              :class="{ muted: row.metrics[c.metric] == null }"
-            >
-              {{ fmtMetric(row.metrics[c.metric]) }}
-            </td>
-          </tr>
-          <tr v-if="visible.length === 0">
-            <td :colspan="columns.length + 1" class="empty">
-              No services match <code>{{ filter }}</code>.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-if="pageCount > 1" class="pager">
-        <button class="sw-btn ghost small" :disabled="currentPage === 0" @click="page = currentPage - 1">←</button>
-        <span class="page-info">{{ currentPage + 1 }} / {{ pageCount }}</span>
-        <button
-          class="sw-btn ghost small"
-          :disabled="currentPage >= pageCount - 1"
-          @click="page = currentPage + 1"
+            {{ c.label }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="row in visible"
+          :key="row.serviceId"
+          class="row"
+          :class="{ active: row.serviceId === selectedId }"
+          @click="emit('select', row.serviceId)"
         >
-          →
-        </button>
-      </div>
+          <td class="svc-col" :title="row.serviceName">
+            <span class="pulse" :style="{ background: colorForStatus(statusForMetrics(row.metrics)) }" />
+            <span class="name-text">{{ row.shortName || row.serviceName }}</span>
+          </td>
+          <td
+            v-for="c in columns"
+            :key="c.metric"
+            class="num"
+            :class="{ muted: row.metrics[c.metric] == null }"
+            :style="{ color: thresholdColor(c.metric, row.metrics[c.metric] ?? null) ?? undefined }"
+          >
+            {{ fmtMetric(row.metrics[c.metric]) }}
+          </td>
+        </tr>
+        <tr v-if="visible.length === 0">
+          <td :colspan="columns.length + 1" class="empty">
+            No services match <code>{{ filter }}</code>.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-if="pageCount > 1" class="pager">
+      <button class="sw-btn ghost small" :disabled="currentPage === 0" @click="page = currentPage - 1">←</button>
+      <span class="page-info">{{ currentPage + 1 }} / {{ pageCount }}</span>
+      <button
+        class="sw-btn ghost small"
+        :disabled="currentPage >= pageCount - 1"
+        @click="page = currentPage + 1"
+      >→</button>
     </div>
   </section>
 </template>
 
 <style scoped>
-.selector {
-  margin-bottom: 14px;
-}
-.pin {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-}
-.pin .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 8px;
-}
-.pin-title {
-  min-width: 0;
-  flex: 0 0 220px;
-}
-.pin-title .kicker {
-  display: block;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--sw-fg-3);
-  line-height: 1;
-}
-.pin-title .name {
-  margin-top: 2px;
-  font-family: var(--sw-mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--sw-fg-0);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pin-kpis {
-  display: flex;
-  gap: 18px;
-  flex: 1;
-  flex-wrap: wrap;
-}
-.pin-kpi {
-  text-align: right;
-  min-width: 50px;
-}
-.pin-kpi-label {
-  display: block;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--sw-fg-3);
-  margin-bottom: 1px;
-}
-.pin-kpi-label .unit {
-  margin-left: 2px;
-  text-transform: none;
-  letter-spacing: 0;
-}
-.pin-kpi-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sw-fg-0);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-.pin-kpi-value.muted {
-  color: var(--sw-fg-3);
-}
-.toggle {
-  margin-left: auto;
-  font-size: 11px;
-  height: 24px;
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.caret {
-  display: inline-block;
-  transform: rotate(0);
-  transition: transform 0.12s;
-  font-size: 8px;
-}
-.caret.open {
-  transform: rotate(180deg);
-}
 .picker {
-  border-top: 1px solid var(--sw-line);
-  padding: 10px 14px 14px;
+  margin-bottom: 14px;
 }
 .picker-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--sw-line);
 }
 .search {
   flex: 1;
@@ -314,14 +176,14 @@ function toggle(): void {
   letter-spacing: 0.06em;
   color: var(--sw-fg-3);
   font-weight: 500;
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--sw-line);
 }
 .picker-table th.num {
   text-align: right;
 }
 .picker-table td {
-  padding: 6px 8px;
+  padding: 7px 12px;
   color: var(--sw-fg-1);
   border-bottom: 1px solid var(--sw-line);
 }
@@ -347,7 +209,7 @@ function toggle(): void {
 }
 .picker-table .empty {
   text-align: center;
-  padding: 16px;
+  padding: 18px;
   color: var(--sw-fg-3);
   font-size: 11px;
 }
@@ -358,10 +220,19 @@ function toggle(): void {
   border-radius: 3px;
 }
 .svc-col {
-  max-width: 240px;
+  max-width: 280px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 0 currentColor;
 }
 .name-text {
   font-family: var(--sw-mono);
@@ -373,7 +244,7 @@ function toggle(): void {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  margin-top: 10px;
+  padding: 8px 0 12px;
 }
 .pager .sw-btn {
   height: 22px;

@@ -50,6 +50,32 @@ export interface LayerCaps {
   events?: boolean;
 }
 
+/**
+ * One metric column for the layer's landing / summary KPI strip.
+ * Mirrors `dashboards.<layer>.json:metrics.columns[]` so the SPA can
+ * render the operator-edited labels / MQEs / aggregations instead of
+ * static catalog defaults.
+ */
+export interface LayerMetricsColumn {
+  metric: string;
+  label: string;
+  unit?: string;
+  mqe?: string;
+  aggregation?: 'sum' | 'avg';
+  scale?: number;
+  precision?: number;
+}
+
+export interface LayerMetricsConfig {
+  /** Default `topN` ranking metric. */
+  orderBy?: string;
+  /** Headline metric for the Overview per-layer KPI tile. */
+  throughput?: string;
+  /** Sparkline metric (defaults to `throughput` when omitted). */
+  spark?: string;
+  columns?: LayerMetricsColumn[];
+}
+
 export interface LayerDef {
   key: string;
   /** Display name from OAP `getMenuItems.title` (preserving casing). */
@@ -66,6 +92,10 @@ export interface LayerDef {
   documentLink?: string;
   slots: LayerSlots;
   caps: LayerCaps;
+  /** Per-layer metric config from the JSON template; UI uses it as
+   *  the source of truth for KPI columns + throughput / spark when
+   *  present. Falls back to static catalog defaults when absent. */
+  metrics?: LayerMetricsConfig;
 }
 
 export interface MenuResponse {

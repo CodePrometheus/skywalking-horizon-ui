@@ -37,7 +37,7 @@ import Sparkline from '@/components/charts/Sparkline.vue';
 const props = defineProps<{ layer: LayerDef }>();
 const store = useSetupStore();
 const cfg = computed(() =>
-  store.ensure(props.layer.key, { slots: props.layer.slots, caps: props.layer.caps }),
+  store.ensure(props.layer.key, { slots: props.layer.slots, caps: props.layer.caps, metrics: props.layer.metrics }),
 );
 const landingCfg = computed(() => cfg.value.landing);
 const layerRef = toRef(props, 'layer');

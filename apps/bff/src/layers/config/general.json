@@ -34,7 +34,7 @@
       {
         "id": "top_apis",
         "title": "Top 20 APIs",
-        "tip": "Layer-wide ranking. Switch tabs to re-rank by:\n  Traffic        top_n(endpoint_cpm,20,des)\n  Slow response  top_n(endpoint_resp_time,20,des)\n  Worst SR       top_n(endpoint_sla,20,asc)/100",
+        "tip": "Layer-wide ranking. Switch tabs to re-rank by traffic, response time, or worst success rate.",
         "type": "top",
         "expressions": [
           "top_n(endpoint_cpm,20,des)",
@@ -59,7 +59,7 @@
       {
         "id": "mq_combined",
         "title": "MQ Consume rate + latency",
-        "tip": "Dual y-axis: service_mq_consume_count (left) + service_mq_consume_latency (right).",
+        "tip": "Count on the left axis, latency on the right.",
         "type": "line",
         "expressions": [
           "service_mq_consume_count",
@@ -68,14 +68,13 @@
         "expressionLabels": ["count", "latency"],
         "expressionUnits": ["/min", "ms"],
         "expressionAxes": [0, 1],
-        "visibleWhen": "service_mq_consume_count has value",
         "span": 3,
         "rowSpan": 2
       },
       {
         "id": "apdex_line",
         "title": "Apdex",
-        "tip": "service_apdex/10000 — 0 to 1 satisfaction score.",
+        "tip": "User-satisfaction score on a 0 – 1 scale.",
         "type": "line",
         "expressions": ["service_apdex/10000"],
         "span": 3,
@@ -84,7 +83,7 @@
       {
         "id": "percentile_line",
         "title": "Response Time Percentile",
-        "tip": "Single MQE: relabels(service_percentile{p='50,75,90,95,99'},...,percentile='50,...').",
+        "tip": "p50 / p75 / p90 / p95 / p99 latency — the tail of the response-time distribution.",
         "type": "line",
         "unit": "ms",
         "expressions": [
@@ -114,7 +113,7 @@
       {
         "id": "top_instance_load",
         "title": "Top 10 instances by load",
-        "tip": "top_n(service_instance_cpm,10,des) — for the selected service.",
+        "tip": "Ranked by traffic across the selected service's instances.",
         "type": "top",
         "unit": "rpm",
         "expressions": ["top_n(service_instance_cpm,10,des)"],
@@ -124,7 +123,7 @@
       {
         "id": "top_instance_slow",
         "title": "Top 10 slowest instances",
-        "tip": "top_n(service_instance_resp_time,10,des) — for the selected service.",
+        "tip": "Ranked by average response time across the selected service's instances.",
         "type": "top",
         "unit": "ms",
         "expressions": ["top_n(service_instance_resp_time,10,des)"],

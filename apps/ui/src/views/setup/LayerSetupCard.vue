@@ -47,7 +47,7 @@ const props = defineProps<{ layer: LayerDef; expanded?: boolean }>();
 const emit = defineEmits<{ (e: 'toggle'): void }>();
 
 const store = useSetupStore();
-const cfg = computed(() => store.ensure(props.layer.key, { slots: props.layer.slots, caps: props.layer.caps }));
+const cfg = computed(() => store.ensure(props.layer.key, { slots: props.layer.slots, caps: props.layer.caps, metrics: props.layer.metrics }));
 
 const open = ref(props.expanded ?? false);
 function toggle(): void {

@@ -50,7 +50,7 @@ const layer = computed<LayerDef | null>(() => {
 const store = useSetupStore();
 const cfg = computed(() => {
   if (!layer.value) return null;
-  return store.ensure(layer.value.key, { slots: layer.value.slots, caps: layer.value.caps });
+  return store.ensure(layer.value.key, { slots: layer.value.slots, caps: layer.value.caps, metrics: layer.value.metrics });
 });
 
 // Build a non-null LayerDef ref for the landing composable.

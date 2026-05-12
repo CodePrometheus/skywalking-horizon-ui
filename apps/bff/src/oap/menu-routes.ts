@@ -179,6 +179,7 @@ function deriveLayer(
       documentLink: tpl.documentLink ?? item?.documentLink ?? undefined,
       slots: tpl.slots,
       caps: componentsToCaps(tpl.components),
+      metrics: tpl.metrics,
     };
   }
   const def = LAYER_DEFAULTS[rawKey] ?? DEFAULT_FOR_UNKNOWN_LAYER;

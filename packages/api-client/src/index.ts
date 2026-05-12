@@ -16,7 +16,14 @@
  */
 
 export * from './types.js';
-export type { LayerSlots, LayerCaps, LayerDef, MenuResponse } from './menu.js';
+export type {
+  LayerSlots,
+  LayerCaps,
+  LayerDef,
+  LayerMetricsColumn,
+  LayerMetricsConfig,
+  MenuResponse,
+} from './menu.js';
 export type {
   AggregationKind,
   LandingColumn,

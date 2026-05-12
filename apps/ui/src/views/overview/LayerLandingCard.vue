@@ -27,7 +27,7 @@ import { fmtMetric } from '@/utils/formatters';
 
 const props = defineProps<{ layer: LayerDef }>();
 const store = useSetupStore();
-const cfg = computed(() => store.ensure(props.layer.key, { slots: props.layer.slots, caps: props.layer.caps }));
+const cfg = computed(() => store.ensure(props.layer.key, { slots: props.layer.slots, caps: props.layer.caps, metrics: props.layer.metrics }));
 const slotName = computed(() => cfg.value.slots.services ?? 'Services');
 const detailHref = computed(() => `/layer/${props.layer.key}/services`);
 

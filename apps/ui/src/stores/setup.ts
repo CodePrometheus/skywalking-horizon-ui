@@ -22,6 +22,7 @@ import type {
   LandingConfig,
   LayerCaps,
   LayerConfig,
+  LayerMetricsConfig,
   LayerSlots,
 } from '@skywalking-horizon-ui/api-client';
 import { bffClient } from '@/api/client';
@@ -69,7 +70,42 @@ function defaultAggregationFor(metricKey: string): AggregationKind {
   return 'avg';
 }
 
-export function defaultLandingFor(layerKey: string): LandingConfig {
+/**
+ * Build the initial LandingConfig for a layer. When the BFF
+ * surfaces a `metrics` block from the JSON template, prefer it as the
+ * source of truth — that's what the operator edits in
+ * `apps/bff/src/layers/config/<layer>.json` / via the admin page.
+ * Falls back to the static metric-catalog defaults when no template
+ * metrics arrived (e.g. layers without a JSON config file).
+ */
+export function defaultLandingFor(layerKey: string, fromTemplate?: LayerMetricsConfig): LandingConfig {
+  if (fromTemplate?.columns && fromTemplate.columns.length > 0) {
+    const cols = fromTemplate.columns.map((c) => ({
+      metric: c.metric,
+      label: c.label,
+      ...(c.unit ? { unit: c.unit } : {}),
+      ...(c.mqe ? { mqe: c.mqe } : {}),
+      aggregation: c.aggregation ?? defaultAggregationFor(c.metric),
+      ...(c.scale !== undefined ? { scale: c.scale } : {}),
+      ...(c.precision !== undefined ? { precision: c.precision } : {}),
+    }));
+    const orderBy = fromTemplate.orderBy ?? cols[0].metric;
+    const throughputMetric = fromTemplate.throughput ?? orderBy;
+    const sparkMetric = fromTemplate.spark ?? throughputMetric;
+    return {
+      priority: defaultPriority(layerKey),
+      topN: 5,
+      orderBy,
+      columns: cols,
+      spark: { metric: sparkMetric, height: 28 },
+      throughput: {
+        metric: throughputMetric,
+        aggregation: defaultAggregationFor(throughputMetric),
+      },
+      style: 'table',
+    };
+  }
+  // Static fallback for layers with no JSON template.
   const cols = defaultColumnsForLayer(layerKey).map((c) => ({
     ...c,
     aggregation: defaultAggregationFor(c.metric),
@@ -81,8 +117,6 @@ export function defaultLandingFor(layerKey: string): LandingConfig {
     orderBy: defaultOrderByForLayer(layerKey),
     columns: cols,
     spark: { metric: sparkMetric, height: 28 },
-    // Throughput tile defaults to the orderBy metric — operator can
-    // override or remove via Setup. `sum` matches whole-layer traffic.
     throughput: {
       metric: defaultOrderByForLayer(layerKey),
       aggregation: defaultAggregationFor(defaultOrderByForLayer(layerKey)),
@@ -93,12 +127,12 @@ export function defaultLandingFor(layerKey: string): LandingConfig {
 
 export function defaultLayerConfig(
   layerKey: string,
-  defaults: { slots: LayerSlots; caps: LayerCaps },
+  defaults: { slots: LayerSlots; caps: LayerCaps; metrics?: LayerMetricsConfig },
 ): LayerConfig {
   return {
     slots: { ...defaults.slots },
     caps: { ...defaults.caps },
-    landing: defaultLandingFor(layerKey),
+    landing: defaultLandingFor(layerKey, defaults.metrics),
   };
 }
 
@@ -162,23 +196,19 @@ export const useSetupStore = defineStore('setup', () => {
    */
   function ensure(
     layerKey: string,
-    defaults: { slots: LayerSlots; caps: LayerCaps },
+    defaults: { slots: LayerSlots; caps: LayerCaps; metrics?: LayerMetricsConfig },
   ): LayerConfig {
     let cfg = configs[layerKey];
     if (!cfg) {
       cfg = defaultLayerConfig(layerKey, defaults);
       configs[layerKey] = cfg;
-      // Newly-created defaults aren't "dirty" — only explicit edits should
-      // turn the Save button on. We track that by leaving `dirty` alone
-      // here and relying on form-field bindings to flip it via deep proxy
-      // watchers below.
     }
     return cfg;
   }
 
   function reset(
     layerKey: string,
-    defaults: { slots: LayerSlots; caps: LayerCaps },
+    defaults: { slots: LayerSlots; caps: LayerCaps; metrics?: LayerMetricsConfig },
   ): void {
     configs[layerKey] = defaultLayerConfig(layerKey, defaults);
     markDirty();

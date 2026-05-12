@@ -38,15 +38,14 @@ function resetThisLayer(): void {
 
 const summary = computed<string>(() => {
   const c = cfg.value;
-  if (!c.landing.enabled) {
-    return props.layer.active
-      ? 'Hidden from landing — toggle to show'
-      : `${props.layer.name} has no data yet — set up a receiver to start ingesting`;
-  }
   const cols = c.landing.columns.map((x) => x.metric).join(', ');
-  return `Top ${c.landing.topN} by ${c.landing.orderBy} · ${cols}${
+  const base = `Top ${c.landing.topN} by ${c.landing.orderBy} · ${cols}${
     c.landing.spark ? ` · sparkline ${c.landing.spark.metric}` : ''
   } · priority ${c.landing.priority}`;
+  if (!props.layer.active) {
+    return `${base} · no service reporting yet`;
+  }
+  return base;
 });
 
 // Default cap labels with the "Topology" trio collapsed for compact display.
@@ -94,9 +93,10 @@ const headerColor = computed(() => props.layer.color);
 const isDefaultLanding = computed(() => {
   const d = defaultLandingFor(props.layer.key);
   return (
-    !cfg.value.landing.enabled &&
     cfg.value.landing.priority === d.priority &&
-    cfg.value.landing.topN === d.topN
+    cfg.value.landing.topN === d.topN &&
+    cfg.value.landing.orderBy === d.orderBy &&
+    cfg.value.landing.columns.length === d.columns.length
   );
 });
 </script>
@@ -108,8 +108,10 @@ const isDefaultLanding = computed(() => {
       <span class="name">{{ cfg.displayName || layer.name }}</span>
       <span v-if="layer.active" class="sw-badge ok dot-mark">{{ layer.serviceCount >= 0 ? `${layer.serviceCount} services` : 'active' }}</span>
       <span v-else class="sw-badge">no data</span>
-      <span v-if="cfg.landing.enabled" class="sw-badge info" style="margin-left: auto">on landing</span>
-      <span v-else-if="!isDefaultLanding" class="sw-badge" style="margin-left: auto">customized</span>
+      <span class="sw-badge info" style="margin-left: auto" title="Priority on the Overview">
+        ↑ {{ cfg.landing.priority }}
+      </span>
+      <span v-if="!isDefaultLanding" class="sw-badge">customized</span>
       <span class="caret" :class="{ open }"><Icon name="caret" :size="12" /></span>
     </div>
     <div class="summary">{{ summary }}</div>
@@ -154,12 +156,8 @@ const isDefaultLanding = computed(() => {
       <section>
         <h4>Landing card</h4>
         <div class="field-grid landing">
-          <label class="wide">
-            <input type="checkbox" v-model="cfg.landing.enabled" />
-            <span>Show this layer on the landing</span>
-          </label>
           <label>
-            <span>Priority</span>
+            <span>Priority (lower = higher on page)</span>
             <input type="number" v-model.number="cfg.landing.priority" min="0" max="99" />
           </label>
           <label>

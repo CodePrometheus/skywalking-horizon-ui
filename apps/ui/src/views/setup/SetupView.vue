@@ -29,17 +29,9 @@ const store = useSetupStore();
 // configure layers ahead of receivers coming online.
 const orderedLayers = useLandingOrder(layers);
 
-const enabledOnLanding = computed(() =>
-  orderedLayers.value.filter((L) => store.ensure(L.key, { slots: L.slots, caps: L.caps }).landing.enabled),
-);
-
-const filter = ref<'all' | 'active' | 'enabled'>('all');
+const filter = ref<'all' | 'active'>('all');
 const visibleLayers = computed(() => {
   if (filter.value === 'active') return orderedLayers.value.filter((L) => L.active);
-  if (filter.value === 'enabled')
-    return orderedLayers.value.filter((L) =>
-      store.ensure(L.key, { slots: L.slots, caps: L.caps }).landing.enabled,
-    );
   return orderedLayers.value;
 });
 </script>
@@ -48,13 +40,13 @@ const visibleLayers = computed(() => {
   <div class="setup">
     <header class="page-head">
       <div>
-        <div class="kicker">Setup</div>
-        <h1>Configure layers and the landing page</h1>
+        <div class="kicker">Admin · Overview setup</div>
+        <h1>Configure how each layer renders on the Overview</h1>
         <p class="lede">
-          Each detected layer can appear on the landing as its own card with the top services and a
-          set of metrics. Pick which layers show up, set their priority, choose the columns, and
-          rename slots if the default terms don't fit. Inactive layers (no data) can still be
-          configured — they appear once their receiver starts reporting.
+          Every layer reporting services appears on the Overview automatically — no enable toggle.
+          Use this page to set per-layer <strong>priority</strong>, choose the metric columns,
+          rename the entity slots, and toggle features. Inactive layers (no data yet) can still be
+          configured; their card appears as soon as a service starts reporting.
         </p>
       </div>
       <div class="kpi-strip">
@@ -63,12 +55,8 @@ const visibleLayers = computed(() => {
           <span class="kpi-value">{{ layers.length }}</span>
         </div>
         <div class="kpi">
-          <span class="kpi-label">Active</span>
+          <span class="kpi-label">Reporting</span>
           <span class="kpi-value">{{ layers.filter((L) => L.active).length }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">On landing</span>
-          <span class="kpi-value">{{ enabledOnLanding.length }}</span>
         </div>
       </div>
     </header>
@@ -98,10 +86,7 @@ const visibleLayers = computed(() => {
             All <span class="count">{{ orderedLayers.length }}</span>
           </button>
           <button class="seg-btn" :class="{ on: filter === 'active' }" @click="filter = 'active'">
-            Active <span class="count">{{ layers.filter((L) => L.active).length }}</span>
-          </button>
-          <button class="seg-btn" :class="{ on: filter === 'enabled' }" @click="filter = 'enabled'">
-            On landing <span class="count">{{ enabledOnLanding.length }}</span>
+            Reporting <span class="count">{{ layers.filter((L) => L.active).length }}</span>
           </button>
         </div>
       </div>
@@ -112,14 +97,19 @@ const visibleLayers = computed(() => {
 
       <footer class="page-foot">
         <div class="foot-left">
-          <strong>{{ enabledOnLanding.length }}</strong> layer(s) enabled on the landing,
-          in priority order:
-          <span v-for="(L, i) in enabledOnLanding" :key="L.key" class="chip-name">
-            {{ L.name }}<span v-if="i < enabledOnLanding.length - 1">,</span>
+          <strong>{{ orderedLayers.length }}</strong> layer(s) in this deployment,
+          rendered on the Overview in priority order:
+          <span v-for="(L, i) in orderedLayers.slice(0, 8)" :key="L.key" class="chip-name">
+            {{ L.name }} ({{ store.ensure(L.key, { slots: L.slots, caps: L.caps }).landing.priority }})<span
+              v-if="i < Math.min(orderedLayers.length, 8) - 1"
+            >,</span>
           </span>
+          <span v-if="orderedLayers.length > 8">…</span>
         </div>
         <div class="foot-right">
-          <span class="hint">Persistence wires in at Stage 2.4. For now, changes live in this tab only.</span>
+          <span class="hint">
+            Persistence wires in at Stage 2.4. For now, changes live in this tab only.
+          </span>
         </div>
       </footer>
     </template>

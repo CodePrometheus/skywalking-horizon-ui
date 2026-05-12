@@ -40,14 +40,6 @@ export function useLandingOrder(layers: ComputedRef<readonly LayerDef[]>) {
   });
 }
 
-/** Layers that opted in to the landing (`landing.enabled === true`),
- *  sorted by priority. Drives the Overview's card list. */
-export function useLandingLayers(layers: ComputedRef<readonly LayerDef[]>) {
-  const store = useSetupStore();
-  const ordered = useLandingOrder(layers);
-  return computed<LayerDef[]>(() =>
-    ordered.value.filter(
-      (L) => store.ensure(L.key, { slots: L.slots, caps: L.caps }).landing.enabled,
-    ),
-  );
-}
+// (Removed `useLandingLayers` — every available layer is automatically on
+// the landing. The Overview just consumes `useLandingOrder(availableLayers)`
+// directly.)

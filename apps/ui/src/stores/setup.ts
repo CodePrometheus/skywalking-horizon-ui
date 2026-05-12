@@ -19,9 +19,14 @@ import { defineStore } from 'pinia';
 import { reactive } from 'vue';
 import type { LayerCaps, LayerSlots } from '@skywalking-horizon-ui/api-client';
 
-/** Per-layer landing-card configuration. See docs/design/landing-composition.md. */
+/** Per-layer landing-card configuration. See docs/design/landing-composition.md.
+ *
+ * Every available layer (one with services reporting) appears on the
+ * landing automatically. There is intentionally NO `enabled` toggle — the
+ * landing is the auto-composition of all layers' configs. Operators
+ * adjust HOW each layer renders (priority, topN, columns, style); the
+ * only way to suppress a layer is to disable its features in `caps`. */
 export interface LandingConfig {
-  enabled: boolean;
   /** Lower number → higher on the page. Defaults seeded from priority table. */
   priority: number;
   /** 5..8. */
@@ -70,7 +75,6 @@ function defaultColumns(_layerKey: string): LandingConfig['columns'] {
 
 export function defaultLandingFor(layerKey: string): LandingConfig {
   return {
-    enabled: false, // operator opts-in per layer in the setup page
     priority: defaultPriority(layerKey),
     topN: 5,
     orderBy: 'cpm',

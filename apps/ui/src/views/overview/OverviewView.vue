@@ -18,15 +18,15 @@
 import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useLayers } from '@/composables/useLayers';
-import { useLandingLayers } from '@/composables/useLandingOrder';
+import { useLandingOrder } from '@/composables/useLandingOrder';
 import LayerLandingCard from './LayerLandingCard.vue';
 
 const { availableLayers, oapReachable, oapError, isLoading } = useLayers();
-const enabledLayers = useLandingLayers(availableLayers);
+const orderedLayers = useLandingOrder(availableLayers);
 
-// "No one opted in yet" → guide the operator to Setup before anything
-// useful can render.
-const empty = computed(() => !isLoading.value && enabledLayers.value.length === 0);
+// Empty only when no layer is reporting services. Otherwise every
+// available layer auto-renders a card per its setup config.
+const empty = computed(() => !isLoading.value && orderedLayers.value.length === 0);
 </script>
 
 <template>
@@ -36,9 +36,10 @@ const empty = computed(() => !isLoading.value && enabledLayers.value.length === 
         <div class="kicker">Overview</div>
         <h1>Cross-layer landing</h1>
         <p class="lede">
-          Auto-built from the layers you've enabled in
-          <RouterLink to="/setup">Setup</RouterLink>, in the order each layer's priority defines.
-          Each card shows the top services for that layer with its configured metrics.
+          Every layer reporting services renders a card here, in the order each layer's priority
+          defines. Each card shows the top services for that layer with its configured metrics —
+          adjust per-layer priority, top-N, and columns in
+          <RouterLink to="/setup">Overview setup</RouterLink>.
         </p>
       </div>
     </header>
@@ -50,25 +51,20 @@ const empty = computed(() => !isLoading.value && enabledLayers.value.length === 
 
     <div v-if="empty" class="empty">
       <div class="empty-card">
-        <h2>Nothing on the landing yet</h2>
-        <p v-if="availableLayers.length === 0">
-          No layer is reporting services right now. Once data starts flowing through OAP, the
-          layers appear in <RouterLink to="/setup">Setup</RouterLink> for you to enable here.
-        </p>
-        <p v-else>
-          {{ availableLayers.length }} layer{{ availableLayers.length === 1 ? '' : 's' }} reporting,
-          none enabled on the landing yet. Open <RouterLink to="/setup">Setup</RouterLink>, toggle
-          "Show this layer on the landing" for the ones you care about, and they'll appear here in
-          priority order.
+        <h2>No layer is reporting services yet</h2>
+        <p>
+          Once data starts flowing through OAP, every reporting layer appears here automatically,
+          ordered by the priority you assign in
+          <RouterLink to="/setup">Overview setup</RouterLink>.
         </p>
         <RouterLink class="sw-btn is-primary" to="/setup">
-          Open Setup
+          Open Overview setup
         </RouterLink>
       </div>
     </div>
 
     <div v-else class="cards">
-      <LayerLandingCard v-for="L in enabledLayers" :key="L.key" :layer="L" />
+      <LayerLandingCard v-for="L in orderedLayers" :key="L.key" :layer="L" />
     </div>
   </div>
 </template>

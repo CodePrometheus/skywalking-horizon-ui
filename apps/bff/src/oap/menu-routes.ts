@@ -54,6 +54,21 @@ const MENU_QUERY = /* GraphQL */ `
   }
 `;
 
+/**
+ * Legacy enum values OAP keeps for backward compatibility — collapse to the
+ * modern equivalent so the sidebar shows one row per logical layer.
+ */
+const LAYER_ALIAS: Record<string, string> = {
+  CACHE: 'VIRTUAL_CACHE',
+  DATABASE: 'VIRTUAL_DATABASE',
+  MQ: 'VIRTUAL_MQ',
+  GENAI: 'VIRTUAL_GENAI',
+};
+
+function canonical(layer: string): string {
+  return LAYER_ALIAS[layer] ?? layer;
+}
+
 interface MenuRaw {
   layers: string[];
   items: Array<{
@@ -124,15 +139,16 @@ function deriveLayer(
   rawKey: string,
   active: boolean,
   level: number | null,
+  serviceCount: number,
   items: MenuRaw['items'],
 ): LayerDef {
-  const item = items.find((i) => i.layer === rawKey);
+  const item = items.find((i) => canonical(i.layer) === rawKey);
   const def = LAYER_DEFAULTS[rawKey] ?? DEFAULT_FOR_UNKNOWN_LAYER;
   return {
     key: rawKey.toLowerCase(),
     name: item?.title?.trim() || rawKey.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
     color: def.color,
-    serviceCount: -1, // Phase 2.x will fold in `listServices(layer)` counts.
+    serviceCount,
     active,
     level,
     documentLink: item?.documentLink ?? undefined,
@@ -141,35 +157,85 @@ function deriveLayer(
   };
 }
 
+/**
+ * Fetch per-layer service counts in a single GraphQL request with aliased
+ * `listServices(layer)` queries (one alias per active layer). Returns a
+ * map keyed by the layer's RAW (pre-canonical) name.
+ */
+async function fetchCountsForLayers(
+  layers: readonly string[],
+  opts: { statusUrl: string; timeoutMs: number; fetch?: FetchLike },
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (layers.length === 0) return map;
+  // GraphQL aliases must be valid identifiers — index-keyed.
+  const aliased = layers
+    .map((l, i) => `_${i}: listServices(layer: ${JSON.stringify(l)}) { id }`)
+    .join('\n');
+  const query = `query HorizonCounts { ${aliased} }`;
+  try {
+    const data = await graphqlPostShim<Record<string, Array<{ id: string }>>>(opts, query);
+    layers.forEach((l, i) => map.set(l, (data[`_${i}`] ?? []).length));
+  } catch {
+    // Soft-fail: leave the map empty so deriveLayer falls back to -1.
+  }
+  return map;
+}
+
+// Local re-import to avoid a circular dep — graphqlPost is in the same dir.
+import { graphqlPost as graphqlPostShim } from './graphql-client.js';
+
 export function registerMenuRoute(app: FastifyInstance, deps: MenuRouteDeps): void {
   const auth = requireAuth(deps);
   app.get('/api/menu', { preHandler: auth }, async (_req: FastifyRequest, reply: FastifyReply) => {
     const cfg = deps.config.current;
     const statusUrl = cfg.oap.statusUrl;
+    const opts = { statusUrl, timeoutMs: cfg.oap.timeoutMs, fetch: deps.fetch };
     try {
-      const raw = await graphqlPost<MenuRaw>(
-        { statusUrl, timeoutMs: cfg.oap.timeoutMs, fetch: deps.fetch },
-        MENU_QUERY,
+      const raw = await graphqlPost<MenuRaw>(opts, MENU_QUERY);
+
+      // Active list collapsed by alias (CACHE → VIRTUAL_CACHE, etc.).
+      const activeCanonical = new Set(raw.layers.map(canonical));
+      const levelByCanonical = new Map(raw.levels.map((l) => [canonical(l.layer), l.level]));
+
+      // Service-count batch — uses the RAW layer names from OAP since the
+      // alias collapse is only a presentation concern.
+      const counts = await fetchCountsForLayers(raw.layers, opts);
+      const countByCanonical = new Map<string, number>();
+      for (const rawLayer of raw.layers) {
+        const key = canonical(rawLayer);
+        countByCanonical.set(key, (countByCanonical.get(key) ?? 0) + (counts.get(rawLayer) ?? 0));
+      }
+
+      // Catalog order = the order OAP returned `getMenuItems` (mirrors
+      // menu.yaml). Active-only keys not in the catalog get appended at
+      // the end so nothing disappears.
+      const ordered: string[] = [];
+      const seen = new Set<string>();
+      for (const item of raw.items) {
+        if (!item.layer) continue;
+        const k = canonical(item.layer);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        ordered.push(k);
+      }
+      for (const rawLayer of raw.layers) {
+        const k = canonical(rawLayer);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        ordered.push(k);
+      }
+
+      const layers = ordered.map((key) =>
+        deriveLayer(
+          key,
+          activeCanonical.has(key),
+          levelByCanonical.has(key) ? (levelByCanonical.get(key) ?? null) : null,
+          countByCanonical.get(key) ?? (activeCanonical.has(key) ? 0 : -1),
+          raw.items,
+        ),
       );
-      const levelByLayer = new Map(raw.levels.map((l) => [l.layer, l.level]));
-      const allKeys = new Set<string>([
-        ...raw.layers,
-        ...raw.items.map((i) => i.layer),
-      ]);
-      const layers = [...allKeys]
-        .map((key) =>
-          deriveLayer(
-            key,
-            raw.layers.includes(key),
-            levelByLayer.has(key) ? (levelByLayer.get(key) ?? null) : null,
-            raw.items,
-          ),
-        )
-        .sort((a, b) => {
-          // Active layers first, then by name. UI re-sorts as needed.
-          if (a.active !== b.active) return a.active ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
+
       const body: MenuResponse = {
         layers,
         generatedAt: Date.now(),

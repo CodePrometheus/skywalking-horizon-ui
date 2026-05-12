@@ -29,18 +29,17 @@ async function signOut(): Promise<void> {
   await router.push({ name: 'login' });
 }
 
-const { layers, oapReachable, oapError, hasTopology } = useLayers();
+const { availableLayers, oapReachable, oapError, hasTopology } = useLayers();
 
-// Default-open the first active layer once data arrives; user clicks
+// Default-open the first available layer once data arrives; user clicks
 // thereafter take over.
 const expandedLayer = ref<string | null>(null);
 let userTouched = false;
 watch(
-  layers,
+  availableLayers,
   (rows) => {
     if (userTouched || expandedLayer.value) return;
-    const first = rows.find((L) => L.active) ?? rows[0];
-    if (first) expandedLayer.value = first.key;
+    if (rows.length > 0) expandedLayer.value = rows[0].key;
   },
   { immediate: true },
 );
@@ -140,21 +139,32 @@ const sections: NavSection[] = [
 
       <div class="sw-nav-section sw-row" style="justify-content: space-between">
         <span>Layers</span>
-        <span style="color: var(--sw-fg-3); font-weight: 400">{{ layers.length }} layers</span>
+        <span style="color: var(--sw-fg-3); font-weight: 400">
+          {{ availableLayers.length }} with services
+        </span>
       </div>
       <div v-if="!oapReachable && oapError" class="oap-banner" :title="oapError">
         OAP unreachable
       </div>
-      <template v-for="L in layers" :key="L.key">
+      <div v-else-if="availableLayers.length === 0" class="empty-layers">
+        no service reporting yet —
+        <RouterLink to="/" style="color: var(--sw-accent-2); text-decoration: none">
+          set up a layer
+        </RouterLink>
+      </div>
+      <template v-for="L in availableLayers" :key="L.key">
         <div
-          class="sw-nav-item"
-          :class="{ 'is-active': expandedLayer === L.key, 'is-inactive': !L.active }"
+          class="layer-row"
+          :class="{ 'is-active': expandedLayer === L.key }"
           @click="toggleLayer(L.key)"
         >
           <span class="layer-dot" :style="{ background: L.color }" />
-          <span :style="{ fontWeight: expandedLayer === L.key ? 600 : 500 }">{{ L.name }}</span>
-          <span v-if="L.serviceCount >= 0" class="sw-badge" style="margin-left: auto">{{ L.serviceCount }}</span>
-          <span v-else-if="!L.active" class="sw-badge" style="margin-left: auto">no data</span>
+          <span class="layer-name" :style="{ fontWeight: expandedLayer === L.key ? 600 : 500 }">
+            {{ L.name }}
+          </span>
+          <span class="layer-count" :title="`${L.serviceCount} service${L.serviceCount === 1 ? '' : 's'} reporting`">
+            {{ L.serviceCount }}
+          </span>
           <span class="caret" :class="{ open: expandedLayer === L.key }">
             <Icon name="caret" :size="10" />
           </span>
@@ -317,6 +327,58 @@ const sections: NavSection[] = [
   color: var(--sw-fg-2);
   margin-left: 2px;
   letter-spacing: 0.02em;
+}
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--sw-fg-1);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+.layer-row:hover {
+  background: var(--sw-bg-2);
+  color: var(--sw-fg-0);
+}
+.layer-row.is-active {
+  background: var(--sw-bg-3);
+  color: var(--sw-fg-0);
+  box-shadow: inset 2px 0 0 var(--sw-accent);
+}
+.layer-row .layer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-row .layer-count {
+  font-family: var(--sw-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sw-fg-1);
+  background: var(--sw-bg-2);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  min-width: 24px;
+  text-align: center;
+}
+.layer-row.is-active .layer-count {
+  color: var(--sw-accent-2);
+  background: var(--sw-accent-soft);
+  border-color: var(--sw-accent-line);
+}
+.empty-layers {
+  margin: 4px 10px 8px;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  color: var(--sw-fg-3);
+  font-style: italic;
 }
 .layer-dot {
   width: 7px;

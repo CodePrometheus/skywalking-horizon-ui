@@ -38,7 +38,21 @@ export function useLayers() {
   });
 
   const layers = computed<LayerDef[]>(() => q.data.value?.layers ?? []);
+  /**
+   * Layers known to OAP (returned by `listLayers`). May include stale
+   * registry entries — receivers that ever ingested but currently have no
+   * services. Use this for the Setup page; users want to see and configure
+   * every layer they could enable.
+   */
   const activeLayers = computed<LayerDef[]>(() => layers.value.filter((L) => L.active));
+  /**
+   * Layers with at least one currently-reporting service (`listServices`
+   * count > 0). The sidebar uses this so the user doesn't see ghost
+   * entries that no longer carry data.
+   */
+  const availableLayers = computed<LayerDef[]>(() =>
+    layers.value.filter((L) => L.serviceCount > 0),
+  );
   const oapReachable = computed<boolean>(() => q.data.value?.oap.reachable ?? false);
   const oapError = computed<string | undefined>(() => q.data.value?.oap.error);
 
@@ -61,6 +75,7 @@ export function useLayers() {
     isError: q.isError,
     layers,
     activeLayers,
+    availableLayers,
     oapReachable,
     oapError,
     findLayer,

@@ -15,9 +15,17 @@
   limitations under the License.
 -->
 <script setup lang="ts">
-import AppShell from '@/components/shell/AppShell.vue';
+import { RouterView } from 'vue-router';
+import AppSidebar from './AppSidebar.vue';
+import AppTopbar from './AppTopbar.vue';
 </script>
 
 <template>
-  <AppShell />
+  <div class="sw">
+    <AppSidebar />
+    <AppTopbar />
+    <main class="sw-main">
+      <RouterView />
+    </main>
+  </div>
 </template>

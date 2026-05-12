@@ -66,14 +66,31 @@ export interface LayerMetricsColumn {
   precision?: number;
 }
 
+/**
+ * Metrics block on a layer template — defines the columns used
+ * across the service list, plus the default sort. Overview-tile
+ * settings (headline metric, trend metric) live separately on
+ * `LayerOverviewConfig` since they're only used by the Overview
+ * page; this block drives the service list table on the per-layer
+ * page.
+ */
 export interface LayerMetricsConfig {
-  /** Default `topN` ranking metric. */
+  /** Default sort metric for the service list. */
   orderBy?: string;
-  /** Headline metric for the Overview per-layer KPI tile. */
-  throughput?: string;
-  /** Sparkline metric (defaults to `throughput` when omitted). */
-  spark?: string;
   columns?: LayerMetricsColumn[];
+}
+
+/**
+ * Overview-page-only settings. The per-layer compact tile on the
+ * Overview's top strip picks its big headline value and its
+ * trend-line metric from here. Both reference metric keys present
+ * in `LayerMetricsConfig.columns`.
+ */
+export interface LayerOverviewConfig {
+  /** Metric key for the Overview tile's big headline value. */
+  throughput?: string;
+  /** Metric key for the Overview tile's trend line. */
+  spark?: string;
 }
 
 export interface LayerDef {
@@ -93,9 +110,13 @@ export interface LayerDef {
   slots: LayerSlots;
   caps: LayerCaps;
   /** Per-layer metric config from the JSON template; UI uses it as
-   *  the source of truth for KPI columns + throughput / spark when
-   *  present. Falls back to static catalog defaults when absent. */
+   *  the source of truth for the service-list columns + default
+   *  sort. Falls back to static catalog defaults when absent. */
   metrics?: LayerMetricsConfig;
+  /** Overview-tile settings — the headline metric + trend metric on
+   *  the per-layer compact tile in the Overview's top strip. Empty
+   *  when the layer template omits the `overview` block. */
+  overview?: LayerOverviewConfig;
 }
 
 export interface MenuResponse {

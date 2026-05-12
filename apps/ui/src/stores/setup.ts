@@ -23,6 +23,7 @@ import type {
   LayerCaps,
   LayerConfig,
   LayerMetricsConfig,
+  LayerOverviewConfig,
   LayerSlots,
 } from '@skywalking-horizon-ui/api-client';
 import { bffClient } from '@/api/client';
@@ -78,7 +79,11 @@ function defaultAggregationFor(metricKey: string): AggregationKind {
  * Falls back to the static metric-catalog defaults when no template
  * metrics arrived (e.g. layers without a JSON config file).
  */
-export function defaultLandingFor(layerKey: string, fromTemplate?: LayerMetricsConfig): LandingConfig {
+export function defaultLandingFor(
+  layerKey: string,
+  fromTemplate?: LayerMetricsConfig,
+  fromOverview?: LayerOverviewConfig,
+): LandingConfig {
   if (fromTemplate?.columns && fromTemplate.columns.length > 0) {
     const cols = fromTemplate.columns.map((c) => ({
       metric: c.metric,
@@ -90,8 +95,8 @@ export function defaultLandingFor(layerKey: string, fromTemplate?: LayerMetricsC
       ...(c.precision !== undefined ? { precision: c.precision } : {}),
     }));
     const orderBy = fromTemplate.orderBy ?? cols[0].metric;
-    const throughputMetric = fromTemplate.throughput ?? orderBy;
-    const sparkMetric = fromTemplate.spark ?? throughputMetric;
+    const throughputMetric = fromOverview?.throughput ?? orderBy;
+    const sparkMetric = fromOverview?.spark ?? throughputMetric;
     return {
       priority: defaultPriority(layerKey),
       topN: 5,
@@ -127,12 +132,17 @@ export function defaultLandingFor(layerKey: string, fromTemplate?: LayerMetricsC
 
 export function defaultLayerConfig(
   layerKey: string,
-  defaults: { slots: LayerSlots; caps: LayerCaps; metrics?: LayerMetricsConfig },
+  defaults: {
+    slots: LayerSlots;
+    caps: LayerCaps;
+    metrics?: LayerMetricsConfig;
+    overview?: LayerOverviewConfig;
+  },
 ): LayerConfig {
   return {
     slots: { ...defaults.slots },
     caps: { ...defaults.caps },
-    landing: defaultLandingFor(layerKey, defaults.metrics),
+    landing: defaultLandingFor(layerKey, defaults.metrics, defaults.overview),
   };
 }
 
@@ -196,7 +206,12 @@ export const useSetupStore = defineStore('setup', () => {
    */
   function ensure(
     layerKey: string,
-    defaults: { slots: LayerSlots; caps: LayerCaps; metrics?: LayerMetricsConfig },
+    defaults: {
+      slots: LayerSlots;
+      caps: LayerCaps;
+      metrics?: LayerMetricsConfig;
+      overview?: LayerOverviewConfig;
+    },
   ): LayerConfig {
     let cfg = configs[layerKey];
     if (!cfg) {
@@ -208,7 +223,12 @@ export const useSetupStore = defineStore('setup', () => {
 
   function reset(
     layerKey: string,
-    defaults: { slots: LayerSlots; caps: LayerCaps; metrics?: LayerMetricsConfig },
+    defaults: {
+      slots: LayerSlots;
+      caps: LayerCaps;
+      metrics?: LayerMetricsConfig;
+      overview?: LayerOverviewConfig;
+    },
   ): void {
     configs[layerKey] = defaultLayerConfig(layerKey, defaults);
     markDirty();

@@ -180,6 +180,7 @@ function deriveLayer(
       slots: tpl.slots,
       caps: componentsToCaps(tpl.components),
       metrics: tpl.metrics,
+      overview: tpl.overview,
     };
   }
   const def = LAYER_DEFAULTS[rawKey] ?? DEFAULT_FOR_UNKNOWN_LAYER;

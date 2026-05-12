@@ -124,7 +124,7 @@ const visibleLayers = computed(() => {
           <strong>{{ orderedLayers.length }}</strong> layer(s) in this deployment,
           rendered on the Overview in priority order:
           <span v-for="(L, i) in orderedLayers.slice(0, 8)" :key="L.key" class="chip-name">
-            {{ L.name }} ({{ store.ensure(L.key, { slots: L.slots, caps: L.caps, metrics: L.metrics }).landing.priority }})<span
+            {{ L.name }} ({{ store.ensure(L.key, { slots: L.slots, caps: L.caps, metrics: L.metrics, overview: L.overview }).landing.priority }})<span
               v-if="i < Math.min(orderedLayers.length, 8) - 1"
             >,</span>
           </span>

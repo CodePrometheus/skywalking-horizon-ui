@@ -32,8 +32,8 @@ export function useLandingOrder(layers: ComputedRef<readonly LayerDef[]>) {
   const store = useSetupStore();
   return computed<LayerDef[]>(() => {
     return [...layers.value].sort((a, b) => {
-      const pa = store.ensure(a.key, { slots: a.slots, caps: a.caps, metrics: a.metrics }).landing.priority;
-      const pb = store.ensure(b.key, { slots: b.slots, caps: b.caps, metrics: b.metrics }).landing.priority;
+      const pa = store.ensure(a.key, { slots: a.slots, caps: a.caps, metrics: a.metrics, overview: a.overview }).landing.priority;
+      const pb = store.ensure(b.key, { slots: b.slots, caps: b.caps, metrics: b.metrics, overview: b.overview }).landing.priority;
       if (pa !== pb) return pa - pb;
       return 0; // preserve incoming catalog order
     });

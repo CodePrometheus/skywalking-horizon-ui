@@ -169,11 +169,9 @@ const selectedTpl = computed(() => draft.template);
 const currentWidgets = computed(() => widgetsFor(activeScope.value));
 
 /**
- * Metrics-block editor. The metrics block lives directly on the
- * draft template; mutations flow through Vue's reactive proxy so the
- * dirty diff picks them up and Save enables. We ensure the
- * `metrics.columns` array exists before binding so the template can
- * safely v-model into it.
+ * Metrics block editor — drives the service-list columns + default
+ * sort. Overview-only fields (throughput, spark) live in a separate
+ * block, so they're edited in their own card.
  */
 function ensureMetrics(): NonNullable<AdminLayerTemplate['metrics']> {
   if (!draft.template) throw new Error('no template selected');
@@ -182,11 +180,22 @@ function ensureMetrics(): NonNullable<AdminLayerTemplate['metrics']> {
   }
   return draft.template.metrics as NonNullable<AdminLayerTemplate['metrics']>;
 }
+function ensureOverview(): NonNullable<AdminLayerTemplate['overview']> {
+  if (!draft.template) throw new Error('no template selected');
+  if (!draft.template.overview) {
+    (draft.template as AdminLayerTemplate).overview = {};
+  }
+  return draft.template.overview as NonNullable<AdminLayerTemplate['overview']>;
+}
 const metricsModel = computed(() => {
   if (!draft.template) return null;
-  // Touch ensureMetrics on read so the keys are present for v-model.
   ensureMetrics();
   return draft.template.metrics as NonNullable<AdminLayerTemplate['metrics']>;
+});
+const overviewModel = computed(() => {
+  if (!draft.template) return null;
+  ensureOverview();
+  return draft.template.overview as NonNullable<AdminLayerTemplate['overview']>;
 });
 const metricsColumns = computed(() => {
   if (!draft.template) return [];
@@ -335,34 +344,20 @@ function toggleComponent(key: ComponentKey): void {
           </div>
         </section>
 
-        <!-- Metrics editor (the layer's summary KPI columns + the
-             orderBy / throughput / spark selectors). These drive the
-             Overview KPI tile and the per-layer header summary. -->
+        <!-- Service-list metrics: the columns shown in the picker
+             zone's services table + the default sort. Used across
+             the per-layer page. -->
         <section class="sw-card metrics-card">
           <div class="card-head">
-            <h4>Summary metrics</h4>
-            <span class="sub">columns shown on the Overview KPI tile + per-layer header</span>
+            <h4>Service list metrics</h4>
+            <span class="sub">columns + default sort for the service list (picker zone)</span>
             <button class="sw-btn add" type="button" @click="addMetricColumn">＋ Add column</button>
           </div>
           <div v-if="metricsModel" class="metrics-keys">
             <label>
-              <span>orderBy</span>
+              <span>Default sort (orderBy)</span>
               <select v-model="metricsModel.orderBy">
                 <option :value="undefined">(first column)</option>
-                <option v-for="c in metricsColumns" :key="c.metric" :value="c.metric">{{ c.metric }}</option>
-              </select>
-            </label>
-            <label>
-              <span>throughput</span>
-              <select v-model="metricsModel.throughput">
-                <option :value="undefined">(orderBy)</option>
-                <option v-for="c in metricsColumns" :key="c.metric" :value="c.metric">{{ c.metric }}</option>
-              </select>
-            </label>
-            <label>
-              <span>spark</span>
-              <select v-model="metricsModel.spark">
-                <option :value="undefined">(throughput)</option>
                 <option v-for="c in metricsColumns" :key="c.metric" :value="c.metric">{{ c.metric }}</option>
               </select>
             </label>
@@ -403,6 +398,32 @@ function toggleComponent(key: ComponentKey): void {
               </tr>
             </tbody>
           </table>
+        </section>
+
+        <!-- Overview-tile settings: the per-layer compact tile on the
+             Overview's top strip. Only these two settings live here;
+             they reference metric keys from the service-list columns. -->
+        <section v-if="overviewModel" class="sw-card overview-card">
+          <div class="card-head">
+            <h4>Overview tile</h4>
+            <span class="sub">per-layer compact tile on the Overview's top strip</span>
+          </div>
+          <div class="metrics-keys">
+            <label>
+              <span>Headline (throughput)</span>
+              <select v-model="overviewModel.throughput">
+                <option :value="undefined">(orderBy)</option>
+                <option v-for="c in metricsColumns" :key="c.metric" :value="c.metric">{{ c.metric }}</option>
+              </select>
+            </label>
+            <label>
+              <span>Trend line (spark)</span>
+              <select v-model="overviewModel.spark">
+                <option :value="undefined">(throughput)</option>
+                <option v-for="c in metricsColumns" :key="c.metric" :value="c.metric">{{ c.metric }}</option>
+              </select>
+            </label>
+          </div>
         </section>
 
         <!-- Scope tabs -->
@@ -773,7 +794,25 @@ function toggleComponent(key: ComponentKey): void {
   font-weight: 500;
 }
 
-.metrics-card { padding: 0; }
+.metrics-card,
+.overview-card { padding: 0; }
+.overview-card .card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--sw-line);
+}
+.overview-card .card-head h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sw-fg-0);
+}
+.overview-card .card-head .sub {
+  font-size: 10.5px;
+  color: var(--sw-fg-3);
+}
 .metrics-card .card-head .add {
   margin-left: auto;
   font-size: 11.5px;

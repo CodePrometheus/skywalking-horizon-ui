@@ -22,6 +22,7 @@ export type {
   LayerDef,
   LayerMetricsColumn,
   LayerMetricsConfig,
+  LayerOverviewConfig,
   MenuResponse,
 } from './menu.js';
 export type {

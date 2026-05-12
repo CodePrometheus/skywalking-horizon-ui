@@ -72,8 +72,6 @@ export interface AdminLayerTemplate {
   };
   metrics: {
     orderBy?: string;
-    throughput?: string;
-    spark?: string;
     columns?: Array<{
       metric: string;
       label: string;
@@ -83,6 +81,10 @@ export interface AdminLayerTemplate {
       scale?: number;
       precision?: number;
     }>;
+  };
+  overview?: {
+    throughput?: string;
+    spark?: string;
   };
   widgets: DashboardWidget[];
 }

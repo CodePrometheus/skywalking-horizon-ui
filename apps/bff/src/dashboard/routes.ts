@@ -530,8 +530,6 @@ export function registerDashboardRoute(app: FastifyInstance, deps: DashboardRout
     metrics: z
       .object({
         orderBy: z.string().optional(),
-        throughput: z.string().optional(),
-        spark: z.string().optional(),
         columns: z
           .array(
             z.object({
@@ -548,6 +546,13 @@ export function registerDashboardRoute(app: FastifyInstance, deps: DashboardRout
           .optional(),
       })
       .strict(),
+    overview: z
+      .object({
+        throughput: z.string().optional(),
+        spark: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     dashboards: z
       .object({
         service: z.array(widgetSchema).max(40).optional(),

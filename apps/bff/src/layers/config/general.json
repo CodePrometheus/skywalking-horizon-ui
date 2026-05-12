@@ -20,14 +20,16 @@
     "profiling": true
   },
   "metrics": {
-    "throughput": "cpm",
-    "spark": "cpm",
     "orderBy": "cpm",
     "columns": [
       { "metric": "cpm", "label": "RPM", "mqe": "service_cpm", "aggregation": "sum" },
       { "metric": "apdex", "label": "Apdex", "mqe": "service_apdex/10000", "aggregation": "avg" },
       { "metric": "err", "label": "Error Rate", "unit": "%", "mqe": "100 - service_sla/100", "aggregation": "avg" }
     ]
+  },
+  "overview": {
+    "throughput": "cpm",
+    "spark": "cpm"
   },
   "dashboards": {
     "service": [

@@ -66,13 +66,22 @@ export interface LayerMetricColumn {
 }
 
 export interface LayerMetricsConfig {
-  /** Default order-by metric key for the topN service ranking. */
+  /** Default sort metric for the service list. */
   orderBy?: string;
-  /** Throughput metric key (drives the per-layer KPI tile + spark). */
-  throughput?: string;
-  /** Spark metric key (defaults to `throughput` when omitted). */
-  spark?: string;
   columns?: LayerMetricColumn[];
+}
+
+/**
+ * Overview-tile-only settings. Headline + trend metrics on the
+ * per-layer compact tile in the Overview's top strip. Separated
+ * from `LayerMetricsConfig` because these settings affect ONLY the
+ * Overview page; the service list / per-layer pages don't read them.
+ */
+export interface LayerOverviewConfig {
+  /** Metric key for the Overview tile's big headline value. */
+  throughput?: string;
+  /** Metric key for the Overview tile's trend line. */
+  spark?: string;
 }
 
 /**
@@ -102,6 +111,10 @@ export interface LayerTemplate {
   slots: LayerSlotsConfig;
   components: LayerComponentFlags;
   metrics: LayerMetricsConfig;
+  /** Overview-tile only — headline + trend metrics for the Overview's
+   *  per-layer compact tile. Optional; falls back to `metrics.orderBy`
+   *  for the headline when omitted. */
+  overview?: LayerOverviewConfig;
   /** Per-scope widget sets. `service` is the layer's primary landing. */
   dashboards?: LayerDashboards;
   /** Legacy single widget list — treated as `dashboards.service`. */
@@ -144,6 +157,21 @@ function load(): Map<string, LayerTemplate> {
     // the rest of the codebase only needs to know about the new shape.
     if (parsed.widgets && (!parsed.dashboards || !parsed.dashboards.service)) {
       parsed.dashboards = { ...parsed.dashboards, service: parsed.widgets };
+    }
+    // Migrate legacy `metrics.throughput` + `metrics.spark` → top-level
+    // `overview` block. Overview-page settings used to live alongside
+    // the service-list metric config; they're now split since they
+    // affect different pages.
+    const legacyMetrics = parsed.metrics as
+      | (LayerMetricsConfig & { throughput?: string; spark?: string })
+      | undefined;
+    if (legacyMetrics && (legacyMetrics.throughput || legacyMetrics.spark)) {
+      const ov: LayerOverviewConfig = { ...(parsed.overview ?? {}) };
+      if (!ov.throughput && legacyMetrics.throughput) ov.throughput = legacyMetrics.throughput;
+      if (!ov.spark && legacyMetrics.spark) ov.spark = legacyMetrics.spark;
+      parsed.overview = ov;
+      delete legacyMetrics.throughput;
+      delete legacyMetrics.spark;
     }
     out.set(parsed.key.toUpperCase(), parsed);
   }

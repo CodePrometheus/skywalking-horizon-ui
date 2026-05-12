@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import Icon from '@/components/icons/Icon.vue';
+import logoSw from '@/assets/icons/logo-sw.svg?url';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -47,11 +47,8 @@ async function submit(): Promise<void> {
   <div class="login-wrap">
     <form class="login-card" @submit.prevent="submit">
       <div class="brand">
-        <div class="brand-mark"><Icon name="sky" :size="20" /></div>
-        <div>
-          <div class="brand-title">SkyWalking</div>
-          <div class="brand-sub">Horizon UI</div>
-        </div>
+        <img :src="logoSw" alt="SkyWalking" class="brand-logo" />
+        <div class="brand-sub">Horizon UI</div>
       </div>
 
       <label class="field">
@@ -110,30 +107,21 @@ async function submit(): Promise<void> {
 }
 .brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 22px;
 }
-.brand-mark {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--sw-accent) 0%, #d946ef 110%);
-  color: #fff;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 12px 28px -10px var(--sw-accent);
-}
-.brand-title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.brand-logo {
+  height: 26px;
+  width: auto;
+  display: block;
 }
 .brand-sub {
   font-size: 11px;
   color: var(--sw-fg-2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .field {
   display: block;

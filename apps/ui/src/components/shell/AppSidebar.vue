@@ -18,6 +18,7 @@
 import { ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import Icon, { type IconName } from '@/components/icons/Icon.vue';
+import logoSw from '@/assets/icons/logo-sw.svg?url';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -72,9 +73,8 @@ const admin: NavRow[] = [
 
 <template>
   <aside class="sw-side">
-    <RouterLink to="/" class="sw-brand">
-      <div class="sw-brand-mark"><Icon name="sky" :size="13" /></div>
-      <span>SkyWalking</span>
+    <RouterLink to="/" class="sw-brand" aria-label="SkyWalking Horizon">
+      <img :src="logoSw" alt="SkyWalking" class="brand-logo" />
       <small>Horizon</small>
     </RouterLink>
 
@@ -153,6 +153,17 @@ const admin: NavRow[] = [
 .sw-brand:hover {
   text-decoration: none;
   color: inherit;
+}
+.brand-logo {
+  height: 18px;
+  width: auto;
+  display: block;
+}
+.sw-brand small {
+  font-weight: 500;
+  color: var(--sw-fg-2);
+  margin-left: 2px;
+  letter-spacing: 0.02em;
 }
 .layer-dot {
   width: 7px;

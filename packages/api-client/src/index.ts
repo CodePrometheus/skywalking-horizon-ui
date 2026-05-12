@@ -16,6 +16,7 @@
  */
 
 export * from './types.js';
+export type { LayerSlots, LayerCaps, LayerDef, MenuResponse } from './menu.js';
 export {
   RuntimeRuleClient,
   type RuntimeRuleClientOptions,

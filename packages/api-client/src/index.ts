@@ -27,6 +27,14 @@ export type {
   ThroughputConfig,
 } from './setup.js';
 export type { LandingAggregates, LandingResponse, LandingServiceRow } from './landing.js';
+export type {
+  DashboardConfig,
+  DashboardResponse,
+  DashboardSeries,
+  DashboardWidget,
+  DashboardWidgetResult,
+  DashboardWidgetType,
+} from './dashboard.js';
 export type { OapInfo } from './oap-info.js';
 export { parseOapTimezoneMinutes } from './oap-info.js';
 export {

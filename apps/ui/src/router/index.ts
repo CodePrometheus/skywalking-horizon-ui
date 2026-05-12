@@ -36,7 +36,6 @@ function layerRoute(): RouteRecordRaw {
     { path: 'endpoints', label: 'Endpoints', phase: 'Phase 2 / 3' },
     { path: 'topology', label: 'Topology', phase: 'Phase 4' },
     { path: 'dependency', label: 'API dependency', phase: 'Phase 4' },
-    { path: 'dashboards', label: 'Dashboards', phase: 'Phase 3' },
     { path: 'traces', label: 'Traces', phase: 'Phase 5' },
     { path: 'logs', label: 'Logs', phase: 'Phase 5' },
     { path: 'profiling', label: 'Profiling', phase: 'Phase 8' },
@@ -60,6 +59,10 @@ function layerRoute(): RouteRecordRaw {
           query: { service: String(to.params.serviceId) },
         }),
       },
+      // Real dashboards (Phase 3). Widget set comes from the BFF's
+      // defaults (lifted from booster-ui templates); MQE runs live via
+      // /api/layer/:key/dashboard.
+      { path: 'dashboards', component: () => import('@/views/layer/LayerDashboardsView.vue') },
       ...placeholderTabs.map<RouteRecordRaw>((f) => ({
         path: f.path,
         component: () => import('@/views/layer/LayerTabPlaceholder.vue'),

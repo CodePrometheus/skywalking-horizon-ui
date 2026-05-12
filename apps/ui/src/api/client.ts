@@ -16,6 +16,9 @@
  */
 
 import type {
+  DashboardConfig,
+  DashboardResponse,
+  DashboardWidget,
   LandingConfig,
   LandingResponse,
   MenuResponse,
@@ -37,6 +40,10 @@ export type {
   LandingColumn,
   LandingResponse,
   LandingServiceRow,
+  DashboardConfig,
+  DashboardResponse,
+  DashboardWidget,
+  DashboardWidgetResult,
 } from '@skywalking-horizon-ui/api-client';
 
 
@@ -143,6 +150,24 @@ export class BffClient {
     return this.request<LandingResponse>(
       'POST',
       `/api/layer/${encodeURIComponent(layerKey)}/landing`,
+      body,
+    );
+  }
+
+  // ── dashboards (per-layer widget data) ───────────────────────────────
+  dashboardConfig(layerKey: string): Promise<DashboardConfig> {
+    return this.request<DashboardConfig>(
+      'GET',
+      `/api/layer/${encodeURIComponent(layerKey)}/dashboard/config`,
+    );
+  }
+  dashboard(
+    layerKey: string,
+    body: { service?: string; widgets?: DashboardWidget[] } = {},
+  ): Promise<DashboardResponse> {
+    return this.request<DashboardResponse>(
+      'POST',
+      `/api/layer/${encodeURIComponent(layerKey)}/dashboard`,
       body,
     );
   }

@@ -43,16 +43,20 @@ interface NavRow {
   badge?: { text: string; kind?: 'ok' | 'warn' | 'err' | 'info' };
 }
 
-// Cross-layer operations stay global.
+// Operate = OAP runtime operations (vantage-parity) + alarms.
+// Trace search is per-layer (lives under /layer/:key/traces) so it's NOT here.
 const operate: NavRow[] = [
   { icon: 'alert', label: 'Alarms', to: '/operate/alarms', badge: { text: '7', kind: 'err' } },
-  { icon: 'trace', label: 'Trace search', to: '/operate/traces' },
+  { icon: 'svc', label: 'Cluster status', to: '/operate/cluster' },
+  { icon: 'set', label: 'DSL catalog', to: '/operate/dsl' },
+  { icon: 'metric', label: 'Inspect', to: '/operate/inspect' },
+  { icon: 'flame', label: 'Live debug', to: '/operate/live-debug' },
+  { icon: 'trace', label: 'OAL viewer', to: '/operate/oal' },
+  { icon: 'download', label: 'Dump', to: '/operate/dump' },
 ];
 const admin: NavRow[] = [
-  { icon: 'svc', label: 'Cluster status', to: '/cluster' },
   { icon: 'user', label: 'Users', to: '/admin/users' },
   { icon: 'set', label: 'Roles', to: '/admin/roles' },
-  { icon: 'log', label: 'Audit log', to: '/admin/audit' },
 ];
 </script>
 

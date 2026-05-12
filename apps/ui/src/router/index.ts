@@ -85,15 +85,18 @@ function layerSubRoutes(): RouteRecordRaw[] {
 const shellRoutes: RouteRecordRaw[] = [
   { path: '', name: 'home', component: () => import('@/views/landing/LandingView.vue') },
   ...layerSubRoutes(),
-  // Cross-layer operate
-  { path: 'operate/alarms', component: placeholder, props: { title: 'Alarms', phase: 'Phase 5', note: 'Read-only; recovery is backend-auto.' } },
-  { path: 'operate/traces', component: placeholder, props: { title: 'Trace search', phase: 'Phase 5', note: 'Cross-layer trace search. Per-layer trace explorers live under /layer/:key/traces.' } },
-  { path: 'operate/traces/:traceId', component: placeholder, props: (r) => ({ title: `Trace · ${r.params.traceId}`, phase: 'Phase 5' }) },
-  // Admin
-  { path: 'cluster', component: placeholder, props: { title: 'Cluster status', phase: 'Phase 6 / 7', note: 'Module activity matrix · storage health · receiver activity · effective config tree · TTL grid.' } },
+  // Operate (vantage-parity) — OAP runtime operations
+  { path: 'operate/alarms', component: placeholder, props: { title: 'Alarms', phase: 'Phase 5', note: 'Read-only; recovery is backend-auto. Live debug card via admin REST.' } },
+  { path: 'operate/cluster', component: placeholder, props: { title: 'Cluster status', phase: 'Phase 6 / 7', note: 'Module activity matrix · storage health · receiver activity · effective config tree · TTL grid.' } },
+  { path: 'operate/dsl', component: placeholder, props: { title: 'DSL catalog', phase: 'Phase 6', note: 'MAL / LAL rule catalog + Monaco editor with diff and revert-to-bundled.' } },
+  { path: 'operate/dsl/:catalog/:name', component: placeholder, props: (r) => ({ title: `Edit · ${r.params.name}`, phase: 'Phase 6' }) },
+  { path: 'operate/inspect', component: placeholder, props: { title: 'Inspect', phase: 'Phase 6', note: 'OAP metric catalog browse + MQE ad-hoc charts with rule attribution.' } },
+  { path: 'operate/live-debug/:tab(mal|lal|oal)?', component: placeholder, props: (r) => ({ title: `Live debug · ${r.params.tab ?? 'mal'}`, phase: 'Phase 6' }) },
+  { path: 'operate/oal', component: placeholder, props: { title: 'OAL viewer', phase: 'Phase 6', note: 'Read-only OAL files with line-numbered syntax highlighting.' } },
+  { path: 'operate/dump', component: placeholder, props: { title: 'Dump', phase: 'Phase 6', note: 'Stream OAP runtime-rule dump as tar.gz.' } },
+  // Admin (users + roles only; no audit log UI — BFF JSONL is server-side forensic only)
   { path: 'admin/users', component: placeholder, props: { title: 'Users', phase: 'Phase 7' } },
   { path: 'admin/roles', component: placeholder, props: { title: 'Roles & permissions', phase: 'Phase 7' } },
-  { path: 'admin/audit', component: placeholder, props: { title: 'Audit log', phase: 'Phase 7' } },
 ];
 
 const router = createRouter({

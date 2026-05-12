@@ -39,6 +39,21 @@ export interface MetricMeta {
   category?: 'throughput' | 'latency' | 'reliability' | 'resource';
 }
 
+/**
+ * Logical layer category. Used to pick a sensible default column set for
+ * the Overview landing card. Concrete OAP layer enums map to one of these
+ * via {@link layerCategory}.
+ */
+export type LayerCategory =
+  | 'general'
+  | 'mesh'
+  | 'k8s'
+  | 'browser'
+  | 'database'
+  | 'mq'
+  | 'faas'
+  | 'genai';
+
 export const METRICS: Record<string, MetricMeta> = {
   cpm: {
     key: 'cpm',
@@ -110,6 +125,171 @@ export const METRICS: Record<string, MetricMeta> = {
     tip: 'Percentage of failed requests. Lower is better.',
     category: 'reliability',
   },
+
+  // --- MQ-flavored layers (kafka / pulsar / rocketmq / rabbitmq / activemq / virtual_mq)
+  // Names mirror the booster-ui MQ widget keys (`service_mq_consume_count`,
+  // `service_mq_consumer_lag`) — we surface the short alias here, the MQE
+  // expression is resolved per-deployment by the BFF in Stage 2.6.
+  'mq.msg-rate': {
+    key: 'mq.msg-rate',
+    label: 'msg/s',
+    longLabel: 'Messages per second',
+    tip: 'Producer or consumer message throughput across the cluster.',
+    category: 'throughput',
+  },
+  'mq.consumer-lag': {
+    key: 'mq.consumer-lag',
+    label: 'lag',
+    longLabel: 'Consumer lag',
+    tip: 'Number of messages a consumer is behind the latest offset. Lower is better.',
+    category: 'reliability',
+  },
+  'mq.consume-latency': {
+    key: 'mq.consume-latency',
+    label: 'consume',
+    longLabel: 'Consume latency',
+    unit: 'ms',
+    tip: 'Time from publish to consumer acknowledgment.',
+    category: 'latency',
+  },
+
+  // --- DB layers (mysql / postgresql / mongodb / elasticsearch / redis / clickhouse / virtual_database)
+  'db.qps': {
+    key: 'db.qps',
+    label: 'qps',
+    longLabel: 'Queries per second',
+    tip: 'Average query throughput over the time window.',
+    category: 'throughput',
+  },
+  'db.slow-queries': {
+    key: 'db.slow-queries',
+    label: 'slow',
+    longLabel: 'Slow query count',
+    tip: 'Number of queries exceeding the slow-query threshold.',
+    category: 'reliability',
+  },
+  'db.conn': {
+    key: 'db.conn',
+    label: 'conns',
+    longLabel: 'Active connections',
+    tip: 'Open client connections to the database.',
+    category: 'resource',
+  },
+
+  // --- Cache (redis / virtual_cache)
+  'cache.hit-rate': {
+    key: 'cache.hit-rate',
+    label: 'hit',
+    longLabel: 'Cache hit rate',
+    unit: '%',
+    tip: 'Percentage of lookups served from cache.',
+    category: 'reliability',
+  },
+
+  // --- Browser layer
+  'browser.pv': {
+    key: 'browser.pv',
+    label: 'pv',
+    longLabel: 'Page views',
+    tip: 'Page-view count over the time window.',
+    category: 'throughput',
+  },
+  'browser.js-err': {
+    key: 'browser.js-err',
+    label: 'js-err',
+    longLabel: 'JS errors',
+    tip: 'Browser JavaScript exceptions reported by the agent.',
+    category: 'reliability',
+  },
+  'browser.page-load': {
+    key: 'browser.page-load',
+    label: 'load',
+    longLabel: 'Page load time',
+    unit: 'ms',
+    tip: 'Full document load time as measured by the navigation timing API.',
+    category: 'latency',
+  },
+  'browser.ajax-resp': {
+    key: 'browser.ajax-resp',
+    label: 'ajax',
+    longLabel: 'AJAX response time',
+    unit: 'ms',
+    tip: 'Average AJAX round-trip latency.',
+    category: 'latency',
+  },
+
+  // --- FaaS (no first-class layer enum yet — speculative for OpenFunction / AWS Lambda)
+  'faas.invocations': {
+    key: 'faas.invocations',
+    label: 'invk',
+    longLabel: 'Invocations',
+    tip: 'Number of function invocations over the time window.',
+    category: 'throughput',
+  },
+  'faas.cold-start': {
+    key: 'faas.cold-start',
+    label: 'cold',
+    longLabel: 'Cold-start count',
+    tip: 'Invocations that incurred a runtime cold start.',
+    category: 'reliability',
+  },
+  'faas.duration': {
+    key: 'faas.duration',
+    label: 'dur',
+    longLabel: 'Invocation duration',
+    unit: 'ms',
+    tip: 'Wall-clock execution time of the function.',
+    category: 'latency',
+  },
+
+  // --- K8s layer
+  'k8s.cpu': {
+    key: 'k8s.cpu',
+    label: 'cpu',
+    longLabel: 'CPU usage',
+    unit: '%',
+    tip: 'Container or pod CPU as a percentage of the limit.',
+    category: 'resource',
+  },
+  'k8s.mem': {
+    key: 'k8s.mem',
+    label: 'mem',
+    longLabel: 'Memory usage',
+    unit: '%',
+    tip: 'Container or pod memory as a percentage of the limit.',
+    category: 'resource',
+  },
+  'k8s.restart': {
+    key: 'k8s.restart',
+    label: 'restarts',
+    longLabel: 'Pod restarts',
+    tip: 'Restart count observed on the workload over the time window.',
+    category: 'reliability',
+  },
+
+  // --- GenAI (virtual_genai)
+  'genai.tokens': {
+    key: 'genai.tokens',
+    label: 'tok/s',
+    longLabel: 'Tokens per second',
+    tip: 'Combined input + output token throughput.',
+    category: 'throughput',
+  },
+  'genai.req': {
+    key: 'genai.req',
+    label: 'req',
+    longLabel: 'Requests',
+    tip: 'Inference request count over the time window.',
+    category: 'throughput',
+  },
+  'genai.latency': {
+    key: 'genai.latency',
+    label: 'latency',
+    longLabel: 'Inference latency',
+    unit: 'ms',
+    tip: 'End-to-end request latency including queueing.',
+    category: 'latency',
+  },
 };
 
 /** Lookup with a graceful fallback so unknown metrics render readable. */
@@ -125,3 +305,184 @@ export function metricMeta(key: string): MetricMeta {
 }
 
 export const METRIC_KEYS: ReadonlyArray<string> = Object.keys(METRICS);
+
+/**
+ * Bucket an OAP layer enum into a logical category so we can pick a sane
+ * default column set on the landing card. Unknown layers fall back to the
+ * `general` (RPC-shaped) set.
+ */
+export function layerCategory(layerKey: string): LayerCategory {
+  const k = layerKey.toLowerCase();
+  if (k === 'general') return 'general';
+  if (k === 'mesh' || k === 'mesh_cp' || k === 'mesh_dp') return 'mesh';
+  if (k === 'k8s' || k === 'k8s_service') return 'k8s';
+  if (k === 'browser') return 'browser';
+  if (k === 'virtual_genai') return 'genai';
+  if (k === 'faas' || k === 'so11y_openfunction' || k.endsWith('_faas')) return 'faas';
+  if (
+    k === 'mysql' || k === 'postgresql' || k === 'mongodb' || k === 'elasticsearch' ||
+    k === 'redis' || k === 'clickhouse' || k === 'virtual_database' || k === 'virtual_cache'
+  ) return 'database';
+  if (
+    k === 'kafka' || k === 'pulsar' || k === 'rocketmq' || k === 'rabbitmq' ||
+    k === 'activemq' || k === 'virtual_mq'
+  ) return 'mq';
+  return 'general';
+}
+
+interface DefaultLandingSet {
+  /** 3–4 columns; first one is usually a throughput-ish metric. */
+  columns: Array<{ metric: string; label?: string; unit?: string }>;
+  /** Metric key used to rank the top-N. */
+  orderBy: string;
+  /** Sparkline metric (defaults to `orderBy` when omitted). */
+  spark?: string;
+}
+
+const LAYER_TYPE_DEFAULTS: Record<LayerCategory, DefaultLandingSet> = {
+  general: {
+    columns: [
+      { metric: 'cpm' },
+      { metric: 'p99' },
+      { metric: 'sla' },
+      { metric: 'err' },
+    ],
+    orderBy: 'cpm',
+  },
+  mesh: {
+    columns: [
+      { metric: 'cpm' },
+      { metric: 'p99' },
+      { metric: 'sla' },
+      { metric: 'err' },
+    ],
+    orderBy: 'cpm',
+  },
+  k8s: {
+    columns: [
+      { metric: 'k8s.cpu' },
+      { metric: 'k8s.mem' },
+      { metric: 'k8s.restart' },
+    ],
+    orderBy: 'k8s.cpu',
+    spark: 'k8s.cpu',
+  },
+  browser: {
+    columns: [
+      { metric: 'browser.pv' },
+      { metric: 'browser.page-load' },
+      { metric: 'browser.ajax-resp' },
+      { metric: 'browser.js-err' },
+    ],
+    orderBy: 'browser.pv',
+    spark: 'browser.pv',
+  },
+  database: {
+    columns: [
+      { metric: 'db.qps' },
+      { metric: 'resp' },
+      { metric: 'db.slow-queries' },
+      { metric: 'db.conn' },
+    ],
+    orderBy: 'db.qps',
+    spark: 'db.qps',
+  },
+  mq: {
+    columns: [
+      { metric: 'mq.msg-rate' },
+      { metric: 'mq.consume-latency' },
+      { metric: 'mq.consumer-lag' },
+    ],
+    orderBy: 'mq.msg-rate',
+    spark: 'mq.msg-rate',
+  },
+  faas: {
+    columns: [
+      { metric: 'faas.invocations' },
+      { metric: 'faas.duration' },
+      { metric: 'faas.cold-start' },
+      { metric: 'err' },
+    ],
+    orderBy: 'faas.invocations',
+    spark: 'faas.invocations',
+  },
+  genai: {
+    columns: [
+      { metric: 'genai.req' },
+      { metric: 'genai.tokens' },
+      { metric: 'genai.latency' },
+    ],
+    orderBy: 'genai.req',
+    spark: 'genai.tokens',
+  },
+};
+
+/** Per-layer-type column defaults. Each column reads label + unit from the
+ *  metric catalog so changes in METRICS flow through without touching this. */
+export function defaultColumnsForLayer(
+  layerKey: string,
+): Array<{ metric: string; label: string; unit?: string }> {
+  const set = LAYER_TYPE_DEFAULTS[layerCategory(layerKey)];
+  return set.columns.map((c) => {
+    const meta = metricMeta(c.metric);
+    return {
+      metric: c.metric,
+      label: c.label ?? meta.label,
+      unit: c.unit ?? meta.unit,
+    };
+  });
+}
+
+/** Metric key used to rank the top-N services on a layer's landing card. */
+export function defaultOrderByForLayer(layerKey: string): string {
+  return LAYER_TYPE_DEFAULTS[layerCategory(layerKey)].orderBy;
+}
+
+/** Sparkline metric for the landing card (falls back to the order-by key). */
+export function defaultSparkForLayer(layerKey: string): string {
+  const set = LAYER_TYPE_DEFAULTS[layerCategory(layerKey)];
+  return set.spark ?? set.orderBy;
+}
+
+/**
+ * Generic RPC-shaped metrics every layer can render — surfaced as a
+ * fallback group in the setup UI's chip picker after the layer-specific
+ * defaults.
+ */
+const GENERIC_METRIC_KEYS: ReadonlyArray<string> = [
+  'cpm', 'resp', 'p50', 'p75', 'p95', 'p99', 'sla', 'apdex', 'err',
+];
+
+const LAYER_TYPE_METRIC_KEYS: Record<LayerCategory, ReadonlyArray<string>> = {
+  general: GENERIC_METRIC_KEYS,
+  mesh: GENERIC_METRIC_KEYS,
+  k8s: ['k8s.cpu', 'k8s.mem', 'k8s.restart'],
+  browser: ['browser.pv', 'browser.page-load', 'browser.ajax-resp', 'browser.js-err'],
+  database: ['db.qps', 'db.slow-queries', 'db.conn', 'cache.hit-rate'],
+  mq: ['mq.msg-rate', 'mq.consume-latency', 'mq.consumer-lag'],
+  faas: ['faas.invocations', 'faas.duration', 'faas.cold-start'],
+  genai: ['genai.req', 'genai.tokens', 'genai.latency'],
+};
+
+/**
+ * Sort metric keys into two buckets for the setup UI: relevant to this
+ * layer's category, vs. the rest of the catalog. Operators can still pick
+ * anything, but the recommended ones surface first.
+ */
+export function metricsForLayer(layerKey: string): {
+  recommended: MetricMeta[];
+  other: MetricMeta[];
+} {
+  const cat = layerCategory(layerKey);
+  const recoKeys = new Set<string>([
+    ...LAYER_TYPE_METRIC_KEYS[cat],
+    // Every layer can usefully render generic reliability/error metrics.
+    ...(cat === 'general' || cat === 'mesh' ? [] : ['err']),
+  ]);
+  const recommended: MetricMeta[] = [];
+  const other: MetricMeta[] = [];
+  for (const m of Object.values(METRICS)) {
+    (recoKeys.has(m.key) ? recommended : other).push(m);
+  }
+  return { recommended, other };
+}

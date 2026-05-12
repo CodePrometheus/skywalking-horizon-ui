@@ -18,7 +18,7 @@
 import { computed, ref } from 'vue';
 import type { LayerDef } from '@skywalking-horizon-ui/api-client';
 import Icon from '@/components/icons/Icon.vue';
-import { METRICS } from '@/composables/metricCatalog';
+import { METRICS, metricsForLayer } from '@/composables/metricCatalog';
 import { useSetupStore, defaultLandingFor } from '@/stores/setup';
 
 const props = defineProps<{ layer: LayerDef; expanded?: boolean }>();
@@ -79,6 +79,22 @@ const availableColumns = Object.values(METRICS).map((m) => ({
   unit: m.unit,
   tip: m.tip,
 }));
+// Chip groups: layer-relevant metrics first, the rest collapsed below.
+const groupedColumns = computed(() => {
+  const { recommended, other } = metricsForLayer(props.layer.key);
+  const toOpt = (m: typeof recommended[number]) => ({
+    metric: m.key,
+    label: m.label,
+    longLabel: m.longLabel,
+    unit: m.unit,
+    tip: m.tip,
+  });
+  return {
+    recommended: recommended.map(toOpt),
+    other: other.map(toOpt),
+  };
+});
+const showAllChips = ref(false);
 function isColumnSelected(metric: string): boolean {
   return cfg.value.landing.columns.some((c) => c.metric === metric);
 }
@@ -204,7 +220,7 @@ const isDefaultLanding = computed(() => {
           <span class="cols-label">Columns (max 5)</span>
           <div class="cols-chips">
             <button
-              v-for="c in availableColumns"
+              v-for="c in groupedColumns.recommended"
               :key="c.metric"
               class="chip"
               :class="{ on: isColumnSelected(c.metric) }"
@@ -214,6 +230,29 @@ const isDefaultLanding = computed(() => {
             >
               {{ c.label }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
             </button>
+            <button
+              v-if="!showAllChips && groupedColumns.other.length > 0"
+              class="chip more"
+              type="button"
+              :title="`Show ${groupedColumns.other.length} more metric${groupedColumns.other.length === 1 ? '' : 's'}`"
+              @click="showAllChips = true"
+            >
+              + {{ groupedColumns.other.length }} more
+            </button>
+            <template v-if="showAllChips">
+              <span class="group-sep">other</span>
+              <button
+                v-for="c in groupedColumns.other"
+                :key="c.metric"
+                class="chip"
+                :class="{ on: isColumnSelected(c.metric) }"
+                type="button"
+                :title="`${c.longLabel}\n\n${c.tip}`"
+                @click="toggleColumn(c.metric, c.label, c.unit)"
+              >
+                {{ c.label }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
+              </button>
+            </template>
           </div>
         </div>
       </section>
@@ -380,6 +419,18 @@ const isDefaultLanding = computed(() => {
 .chip .unit {
   color: var(--sw-fg-3);
   font-size: 10px;
+}
+.chip.more {
+  border-style: dashed;
+  color: var(--sw-fg-2);
+}
+.group-sep {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sw-fg-3);
+  align-self: center;
+  margin: 0 6px;
 }
 .actions {
   display: flex;

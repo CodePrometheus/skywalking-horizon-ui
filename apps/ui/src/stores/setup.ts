@@ -24,6 +24,11 @@ import type {
   LayerSlots,
 } from '@skywalking-horizon-ui/api-client';
 import { bffClient } from '@/api/client';
+import {
+  defaultColumnsForLayer,
+  defaultOrderByForLayer,
+  defaultSparkForLayer,
+} from '@/composables/metricCatalog';
 
 export type { LayerConfig, LandingConfig };
 
@@ -37,24 +42,13 @@ function defaultPriority(layerKey: string): number {
   return 99;
 }
 
-/** Default-columns table per layer category. Concrete MQE metric names are
- *  illustrative until Stage 2.6 wires them up — adjust per layer admin. */
-function defaultColumns(_layerKey: string): LandingConfig['columns'] {
-  return [
-    { metric: 'cpm', label: 'cpm' },
-    { metric: 'p99', label: 'p99', unit: 'ms' },
-    { metric: 'sla', label: 'SLA', unit: '%' },
-    { metric: 'err', label: 'err', unit: '%' },
-  ];
-}
-
 export function defaultLandingFor(layerKey: string): LandingConfig {
   return {
     priority: defaultPriority(layerKey),
     topN: 5,
-    orderBy: 'cpm',
-    columns: defaultColumns(layerKey),
-    spark: { metric: 'cpm', height: 28 },
+    orderBy: defaultOrderByForLayer(layerKey),
+    columns: defaultColumnsForLayer(layerKey),
+    spark: { metric: defaultSparkForLayer(layerKey), height: 28 },
     style: 'table',
   };
 }

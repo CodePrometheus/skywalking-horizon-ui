@@ -2,7 +2,7 @@
   "key": "GENERAL",
   "alias": "General Service",
   "color": "var(--sw-accent)",
-  "documentLink": "https://skywalking.apache.org/docs/main/latest/en/setup/service-agent/",
+  "documentLink": "https://skywalking.apache.org/docs/main/next/en/setup/service-agent/server-agents/",
   "aliases": {
     "services": "Services",
     "instances": "Instances",

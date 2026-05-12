@@ -20,7 +20,7 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import router from './router';
 
-import './assets/styles/tokens.css';
+import '@skywalking-horizon-ui/design-tokens/tokens.css';
 import './assets/styles/global.css';
 
 const app = createApp(App);

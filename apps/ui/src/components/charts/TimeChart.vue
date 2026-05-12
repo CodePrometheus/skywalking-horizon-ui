@@ -54,13 +54,33 @@ const props = withDefaults(
   },
 );
 
-const PALETTE = [
-  '#f97316', // sw-accent (orange)
-  '#60a5fa', // info-ish
+/**
+ * Resolve a CSS variable like `var(--sw-accent)` to its computed RGB
+ * by querying the document root. ECharts doesn't honor CSS vars on
+ * canvas-rendered series, so we evaluate once and feed the hex. Falls
+ * back to the orange accent when the variable resolves empty.
+ */
+function cssVar(token: string): string {
+  if (!token.startsWith('var(')) return token;
+  if (typeof window === 'undefined') return '#f97316';
+  const name = token.replace(/^var\(\s*/, '').replace(/\s*\)\s*$/, '');
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || '#f97316';
+}
+
+/**
+ * Secondary palette for multi-line widgets (e.g., percentile relabels
+ * → 5 series). The first series uses the widget's accent (or the
+ * accent prop); subsequent lines pick from this palette so the lines
+ * are distinguishable. Picks deliberately don't reuse the accent.
+ */
+const SECONDARY = [
+  '#60a5fa', // info-ish (blue)
   '#a78bfa', // purple
   '#22d3ee', // cyan
   '#f472b6', // pink
-  '#34d399', // ok-ish
+  '#34d399', // ok-ish (green)
+  '#fbbf24', // amber
 ];
 
 const container = ref<HTMLDivElement | null>(null);
@@ -113,20 +133,26 @@ function buildOption(): echarts.EChartsCoreOption {
       axisLabel: { color: '#64748b', fontSize: 9 },
       splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
     },
-    series: props.series.map((s, i) => ({
-      name: s.label,
-      type: 'line',
-      smooth: true,
-      symbol: 'none',
-      lineStyle: { width: 1.5 },
-      data: s.data.map((v) => (v === null ? '-' : v)),
-      // Resolve CSS var for the first series; fall back to the palette.
-      itemStyle: { color: i === 0 ? PALETTE[0] : PALETTE[i % PALETTE.length] },
-      areaStyle:
-        props.series.length === 1
-          ? { color: PALETTE[0], opacity: 0.12 }
-          : undefined,
-    })),
+    series: props.series.map((s, i) => {
+      // First series uses the widget's accent color (resolved from a
+      // CSS var); secondary lines cycle through SECONDARY. Single-series
+      // widgets get a soft area fill in the accent tone.
+      const accentHex = cssVar(props.accent);
+      const color = i === 0 ? accentHex : SECONDARY[(i - 1) % SECONDARY.length];
+      return {
+        name: s.label,
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { width: 1.5 },
+        data: s.data.map((v) => (v === null ? '-' : v)),
+        itemStyle: { color },
+        areaStyle:
+          props.series.length === 1
+            ? { color: accentHex, opacity: 0.12 }
+            : undefined,
+      };
+    }),
   };
 }
 
@@ -151,6 +177,10 @@ watch(
 watch(
   () => props.unit,
   () => chart?.setOption(buildOption()),
+);
+watch(
+  () => props.accent,
+  () => chart?.setOption(buildOption(), { replaceMerge: ['series'] }),
 );
 </script>
 

@@ -31,6 +31,7 @@ import { useRoute } from 'vue-router';
 import type { LayerDef } from '@skywalking-horizon-ui/api-client';
 import TimeChart from '@/components/charts/TimeChart.vue';
 import TopList from '@/components/charts/TopList.vue';
+import { colorForMetric } from '@/composables/metricColor';
 import { useLayerDashboard, useLayerDashboardConfig } from '@/composables/useLayerDashboard';
 import { useLayerLanding } from '@/composables/useLayerLanding';
 import { useLayers } from '@/composables/useLayers';
@@ -96,6 +97,34 @@ function gridStyle(w: { span?: number; rowSpan?: number; w?: number; h?: number 
 }
 
 /**
+ * Resolve a widget's primary metric color from its title / id / first
+ * expression. Same color scheme as the layer-header KPI strip so
+ * Apdex shows purple, Traffic orange, p99 yellow, err red across both
+ * surfaces — the operator builds one mental color map.
+ */
+function widgetColor(w: { id?: string; title?: string; expressions?: string[] }): string {
+  // Try a few sources in priority order; the colorForMetric helper
+  // pattern-matches on the metric key (cpm / sla / apdex / err /
+  // p50/p75/p95/p99 / etc.) — the title or id usually contains one.
+  const candidates: string[] = [];
+  if (w.id) candidates.push(w.id);
+  if (w.title) candidates.push(w.title);
+  if (w.expressions?.[0]) candidates.push(w.expressions[0]);
+  // Lower-case + flatten so patterns like 'service_cpm' / 'Traffic'
+  // both hit the right band.
+  for (const c of candidates) {
+    const c2 = c.toLowerCase();
+    if (/(^|[^a-z])cpm([^a-z]|$)/.test(c2) || c2.includes('traffic') || c2.includes('rpm')) return 'var(--sw-accent)';
+    if (c2.includes('apdex')) return 'var(--sw-purple)';
+    if (c2.includes('sla') || c2.includes('success')) return 'var(--sw-purple)';
+    if (/p\d{2,3}/.test(c2) || c2.includes('percentile') || c2.includes('resp_time') || c2.includes('response time') || c2.includes('latency')) return 'var(--sw-warn)';
+    if (c2.includes('err') || c2.includes('error') || c2.includes('failure')) return 'var(--sw-err)';
+  }
+  // Fall back to the metric catalog helper.
+  return colorForMetric(w.id || w.title || w.expressions?.[0] || '');
+}
+
+/**
  * Evaluate a widget's `visibleWhen` predicate.
  *   - `<metric_name> has value`  → the widget's result has a non-null
  *     scalar / a non-empty series.
@@ -149,7 +178,7 @@ function isVisible(
         v-for="w in widgets.filter((wi) => isVisible(wi, resultsById.get(wi.id)))"
         :key="w.id"
         class="widget sw-card"
-        :style="gridStyle(w)"
+        :style="{ ...gridStyle(w), '--widget-accent': widgetColor(w) }"
       >
         <div class="w-head" :title="w.tip">
           <h4>{{ w.title }}</h4>
@@ -172,7 +201,8 @@ function isVisible(
               v-if="resultsById.get(w.id)?.series?.length"
               :series="resultsById.get(w.id)!.series!"
               :unit="w.unit"
-              :height="(w.rowSpan ?? 1) * 160 - 60"
+              :height="(w.rowSpan ?? 1) * 110 - 50"
+              :accent="widgetColor(w)"
             />
             <span v-else class="muted">no data</span>
           </template>
@@ -181,6 +211,7 @@ function isVisible(
               v-if="resultsById.get(w.id)?.topList?.length"
               :items="resultsById.get(w.id)!.topList!"
               :unit="w.unit"
+              :color="widgetColor(w)"
             />
             <span v-else class="muted">no data</span>
           </template>
@@ -238,13 +269,13 @@ function isVisible(
 .grid {
   /* 12-col flow grid with fixed row height. `grid-auto-flow: dense`
    * back-fills gaps so a span-12 widget after several span-4s doesn't
-   * leave a hole. Widget heights are deliberately uniform — operators
-   * vary span (width) more than rowSpan. */
+   * leave a hole. Row height tuned smaller so 2-row line widgets fit
+   * comfortably without dwarfing the rest of the page. */
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-auto-rows: 180px;
+  grid-auto-rows: 120px;
   grid-auto-flow: row dense;
-  gap: 12px;
+  gap: 10px;
 }
 .widget {
   display: flex;
@@ -257,14 +288,17 @@ function isVisible(
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--sw-line);
+  /* Subtle left-edge accent tinted to the widget's primary metric
+   * color — ties each card to the matching KPI in the layer header. */
+  border-left: 3px solid var(--widget-accent, var(--sw-accent));
 }
 .w-head h4 {
   margin: 0;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--sw-fg-0);
+  color: var(--widget-accent, var(--sw-fg-0));
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;

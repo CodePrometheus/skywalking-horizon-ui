@@ -168,6 +168,7 @@ function deriveLayer(
   active: boolean,
   level: number | null,
   serviceCount: number,
+  normal: boolean | null,
   items: MenuRaw['items'],
 ): LayerDef {
   const item = items.find((i) => canonical(i.layer) === rawKey);
@@ -183,6 +184,7 @@ function deriveLayer(
       serviceCount,
       active,
       level,
+      normal,
       documentLink: tpl.documentLink ?? item?.documentLink ?? undefined,
       slots: tpl.slots,
       caps: componentsToCaps(tpl.components),
@@ -199,6 +201,7 @@ function deriveLayer(
     serviceCount,
     active,
     level,
+    normal,
     documentLink: item?.documentLink ?? undefined,
     slots: def.slots,
     caps: def.caps,
@@ -213,19 +216,29 @@ function deriveLayer(
 async function fetchCountsForLayers(
   layers: readonly string[],
   opts: GraphqlOptions,
-): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
+): Promise<Map<string, { count: number; normal: boolean | null }>> {
+  const map = new Map<string, { count: number; normal: boolean | null }>();
   if (layers.length === 0) return map;
-  // GraphQL aliases must be valid identifiers — index-keyed.
+  // GraphQL aliases must be valid identifiers — index-keyed. Also pull
+  // the `normal` flag off the first service so callers can pivot the
+  // MQE entity scope (`{ normal: true|false }`) without a separate
+  // listServices roundtrip on every dashboard hit.
   const aliased = layers
-    .map((l, i) => `_${i}: listServices(layer: ${JSON.stringify(l)}) { id }`)
+    .map((l, i) => `_${i}: listServices(layer: ${JSON.stringify(l)}) { id normal }`)
     .join('\n');
   const query = `query HorizonCounts { ${aliased} }`;
   try {
-    const data = await graphqlPostShim<Record<string, Array<{ id: string }>>>(opts, query);
-    layers.forEach((l, i) => map.set(l, (data[`_${i}`] ?? []).length));
+    const data = await graphqlPostShim<
+      Record<string, Array<{ id: string; normal?: boolean | null }>>
+    >(opts, query);
+    layers.forEach((l, i) => {
+      const rows = data[`_${i}`] ?? [];
+      const first = rows[0];
+      const normal = first ? (first.normal === false ? false : first.normal === true ? true : null) : null;
+      map.set(l, { count: rows.length, normal });
+    });
   } catch {
-    // Soft-fail: leave the map empty so deriveLayer falls back to -1.
+    // Soft-fail: leave the map empty so deriveLayer falls back to -1 / null.
   }
   return map;
 }
@@ -250,9 +263,17 @@ export function registerMenuRoute(app: FastifyInstance, deps: MenuRouteDeps): vo
       // alias collapse is only a presentation concern.
       const counts = await fetchCountsForLayers(raw.layers, opts);
       const countByCanonical = new Map<string, number>();
+      const normalByCanonical = new Map<string, boolean | null>();
       for (const rawLayer of raw.layers) {
         const key = canonical(rawLayer);
-        countByCanonical.set(key, (countByCanonical.get(key) ?? 0) + (counts.get(rawLayer) ?? 0));
+        const c = counts.get(rawLayer);
+        countByCanonical.set(key, (countByCanonical.get(key) ?? 0) + (c?.count ?? 0));
+        // First non-null `normal` value wins for the canonical key —
+        // raw layers that fold into one canonical (e.g. mesh / mesh_cp)
+        // share the same `normal` in practice, so collisions are safe.
+        if (c?.normal !== undefined && c.normal !== null && !normalByCanonical.has(key)) {
+          normalByCanonical.set(key, c.normal);
+        }
       }
 
       // Catalog order = the order OAP returned `getMenuItems` (mirrors
@@ -280,6 +301,7 @@ export function registerMenuRoute(app: FastifyInstance, deps: MenuRouteDeps): vo
           activeCanonical.has(key),
           levelByCanonical.has(key) ? (levelByCanonical.get(key) ?? null) : null,
           countByCanonical.get(key) ?? (activeCanonical.has(key) ? 0 : -1),
+          normalByCanonical.get(key) ?? null,
           raw.items,
         ),
       );

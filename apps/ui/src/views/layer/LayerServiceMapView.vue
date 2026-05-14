@@ -61,18 +61,17 @@ import type {
   TopologyNode,
 } from '@/api/client';
 import { useLayerTopology } from '@/composables/useLayerTopology';
-import { useSelectedService } from '@/composables/useSelectedService';
 import { useLayerLanding } from '@/composables/useLayerLanding';
 import { useLayers } from '@/composables/useLayers';
 import { useSetupStore } from '@/stores/setup';
 import { fmtMetric } from '@/utils/formatters';
+import { parseServiceName, serviceBaseName } from '@/utils/serviceName';
 import Sparkline from '@/components/charts/Sparkline.vue';
 import { isUserNode } from '@/composables/useTopologyIcons';
 
 const route = useRoute();
 const router = useRouter();
 const layerKey = computed(() => String(route.params.layerKey ?? ''));
-const { selectedId, setSelected: setSelectedService } = useSelectedService();
 
 const { layers } = useLayers();
 const layer = computed<LayerDef | null>(
@@ -90,21 +89,49 @@ const safeCfg = computed(() => {
   }).landing;
 });
 const landing = useLayerLanding(safeLayer, safeCfg);
-const serviceName = computed<string | null>(() => {
-  const rows = landing.data.value?.sampledRows ?? landing.rows.value ?? [];
-  const match = rows.find((r) => r.serviceId === selectedId.value);
-  return match?.serviceName ?? null;
-});
 const landingRows = computed(() => landing.data.value?.sampledRows ?? landing.rows.value ?? []);
-watch(
-  landingRows,
-  (rows) => {
-    if (selectedId.value) return;
-    const first = rows[0];
-    if (first) setSelectedService(first.serviceId);
-  },
-  { immediate: true },
+
+// Focus-service is local to the topology view (NOT the header's
+// `useSelectedService` — the topology map is layer-wide by default).
+//   - empty array = no focus, BFF seeds from up-to-30 services in the
+//     layer for a layer-overview graph
+//   - one or more entries = comma-joined and passed as `?service=` so
+//     the BFF seeds BFS from each selected service (multi-select)
+const focusServiceNames = ref<string[]>([]);
+const focusSearch = ref<string>('');
+const focusPickerOpen = ref(false);
+function toggleFocusPicker(): void { focusPickerOpen.value = !focusPickerOpen.value; }
+function toggleService(name: string): void {
+  const i = focusServiceNames.value.indexOf(name);
+  if (i >= 0) focusServiceNames.value.splice(i, 1);
+  else focusServiceNames.value.push(name);
+}
+function clearFocus(): void { focusServiceNames.value = []; focusPickerOpen.value = false; }
+const serviceName = computed<string | null>(() =>
+  focusServiceNames.value.length === 0 ? null : focusServiceNames.value.join(','),
 );
+
+// Service-list rows grouped by `<group>::` prefix so the search panel
+// can render "agent" / "mesh" / "" sections.
+interface GroupedRow { group: string | null; name: string; id: string }
+const groupedRows = computed<Map<string, GroupedRow[]>>(() => {
+  const map = new Map<string, GroupedRow[]>();
+  const term = focusSearch.value.trim().toLowerCase();
+  for (const r of landingRows.value) {
+    const { group, base } = parseServiceName(r.serviceName);
+    if (term && !r.serviceName.toLowerCase().includes(term)) continue;
+    const key = group ?? '';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push({ group, name: base, id: r.serviceId });
+  }
+  return map;
+});
+
+// Defensive truncate for long node labels — preserves the head + an
+// ellipsis so cluster IDs that share a long prefix still distinguish.
+function truncateLabel(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 2) + '…' : s;
+}
 
 const depth = ref<number>(2);
 const { nodes, calls, isLoading, isFetching, data, refetch } = useLayerTopology(
@@ -288,74 +315,9 @@ const layoutNodes = computed<LayoutNode[]>(() => {
   return all.map((n) => ({ ...n, layerIdx: layerOf.get(n.id)! }));
 });
 
-// ── Heaviest-path. Walk from the busiest entry; at each step pick the
-// outgoing edge with the highest server-cpm (preferred) or client-cpm
-// (fallback). The order of preference is operator-controlled via the
-// node ordering in `linkServerMetrics` / `linkClientMetrics`.
-function edgeWeight(c: TopologyCall): number {
-  const s = edgeVal(c, 'server', lineServerDef.value);
-  if (s !== null) return s;
-  const cl = edgeVal(c, 'client', lineClientDef.value);
-  if (cl !== null) return cl;
-  return 0;
-}
-const heaviestEdges = computed<Set<string>>(() => {
-  const out = new Set<string>();
-  const callsList = calls.value;
-  if (callsList.length === 0) return out;
-  const byId = new Map(layoutNodes.value.map((n) => [n.id, n]));
-  const outBy = new Map<string, TopologyCall[]>();
-  for (const c of callsList) {
-    if (!outBy.has(c.source)) outBy.set(c.source, []);
-    outBy.get(c.source)!.push(c);
-  }
-  const roots = layoutNodes.value.filter((n) => n.layerIdx === 0);
-  function rootScore(n: LayoutNode): number {
-    const own = nodeVal(n, centerDef.value);
-    if (own !== null) return own;
-    const outs = outBy.get(n.id) ?? [];
-    let best = 0;
-    for (const c of outs) {
-      const t = byId.get(c.target);
-      if (t) best = Math.max(best, nodeVal(t, centerDef.value) ?? 0, edgeWeight(c));
-    }
-    return best;
-  }
-  const sortedRoots = [...roots].sort((a, b) => rootScore(b) - rootScore(a));
-  const start = sortedRoots[0];
-  if (!start) return out;
-  let cursor: LayoutNode | undefined = start;
-  const seen = new Set<string>();
-  while (cursor && !seen.has(cursor.id)) {
-    seen.add(cursor.id);
-    const outs = outBy.get(cursor.id) ?? [];
-    if (outs.length === 0) break;
-    let best: TopologyCall | null = null;
-    let bestScore = -Infinity;
-    for (const c of outs) {
-      const score = edgeWeight(c);
-      if (score > bestScore) {
-        bestScore = score;
-        best = c;
-      }
-    }
-    if (!best) break;
-    out.add(best.id);
-    cursor = byId.get(best.target);
-  }
-  return out;
-});
-const heaviestNodes = computed<Set<string>>(() => {
-  const set = new Set<string>();
-  const byId = new Map(calls.value.map((c) => [c.id, c]));
-  for (const id of heaviestEdges.value) {
-    const c = byId.get(id);
-    if (!c) continue;
-    set.add(c.source);
-    set.add(c.target);
-  }
-  return set;
-});
+// (Heaviest-path overlay removed — every edge now reads as equally
+// important. The line is constant-weight; direction is conveyed by an
+// animated dashed flow on every edge.)
 
 const NODES_PER_LAYER = 12;
 interface LayerColumn {
@@ -371,18 +333,18 @@ const layerColumns = computed<LayerColumn[]>(() => {
     byLayer.get(n.layerIdx)!.push(n);
   }
   const indices = [...byLayer.keys()].sort((a, b) => a - b);
-  const heavy = heaviestNodes.value;
   return indices.map((i) => {
+    // Per-column sort: busiest by `center` metric first. No heaviest-path
+    // boost — every node is treated as a peer; overflow is purely by
+    // metric value (so the visible 12 are the loudest, not the ones on
+    // a synthetic critical path).
     const list = byLayer.get(i)!.slice().sort((a, b) => {
-      const hA = heavy.has(a.id) ? 1 : 0;
-      const hB = heavy.has(b.id) ? 1 : 0;
-      if (hA !== hB) return hB - hA;
       return (nodeVal(b, centerDef.value) ?? 0) - (nodeVal(a, centerDef.value) ?? 0);
     });
     const keep: LayoutNode[] = [];
     const overflow: LayoutNode[] = [];
     for (const n of list) {
-      if (keep.length < NODES_PER_LAYER || heavy.has(n.id)) keep.push(n);
+      if (keep.length < NODES_PER_LAYER) keep.push(n);
       else overflow.push(n);
     }
     const label = i === 0 ? 'L0 · Entry' : `L${i} · Tier ${i}`;
@@ -850,12 +812,67 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
     <header class="sm-toolbar sw-card">
       <div class="left">
         <span class="kicker">Topology</span>
-        <span v-if="serviceName" class="for-svc">centred on <b>{{ serviceName }}</b></span>
-        <span v-else class="for-svc">layer overview</span>
+        <span v-if="focusServiceNames.length === 0" class="for-svc">layer overview · all services</span>
+        <span v-else class="for-svc">
+          focused on
+          <b>{{ focusServiceNames.length === 1 ? serviceBaseName(focusServiceNames[0]) : `${focusServiceNames.length} services` }}</b>
+        </span>
         <span v-if="isFetching" class="hint">refreshing…</span>
       </div>
       <div class="right">
-        <label class="depth-pick">
+        <!-- Focus picker — lives INSIDE the topology box so the
+             header service picker stays out of the layer-wide map.
+             Supports multi-select + search. Closes by clicking outside
+             the chips (via the wrapper @click.stop). -->
+        <div class="focus-wrap" @click.stop>
+          <button class="focus-btn sw-btn small" type="button" @click="toggleFocusPicker">
+            <span class="focus-btn-label">
+              {{ focusServiceNames.length === 0 ? 'All services' : focusServiceNames.length + ' selected' }}
+            </span>
+            <span class="caret" :class="{ open: focusPickerOpen }">▾</span>
+          </button>
+          <div v-if="focusPickerOpen" class="focus-pop sw-card">
+            <input
+              v-model="focusSearch"
+              class="focus-search"
+              type="text"
+              placeholder="Search services…"
+              autofocus
+            />
+            <div class="focus-list">
+              <button
+                class="focus-row clear"
+                :class="{ selected: focusServiceNames.length === 0 }"
+                type="button"
+                @click="clearFocus"
+              >
+                <span class="focus-check">{{ focusServiceNames.length === 0 ? '●' : '○' }}</span>
+                <span class="focus-name">All services</span>
+                <span class="focus-aside">{{ landingRows.length }} total</span>
+              </button>
+              <template v-for="[gkey, rows] in groupedRows" :key="gkey">
+                <div v-if="gkey" class="focus-group-head">{{ gkey }}</div>
+                <button
+                  v-for="r in rows"
+                  :key="r.id"
+                  class="focus-row"
+                  :class="{ selected: focusServiceNames.includes((r.group ? r.group + '::' : '') + r.name) }"
+                  type="button"
+                  @click="toggleService((r.group ? r.group + '::' : '') + r.name)"
+                >
+                  <span class="focus-check">{{ focusServiceNames.includes((r.group ? r.group + '::' : '') + r.name) ? '●' : '○' }}</span>
+                  <span class="focus-name">{{ r.name }}</span>
+                </button>
+              </template>
+              <div v-if="groupedRows.size === 0" class="focus-empty">no matches</div>
+            </div>
+          </div>
+        </div>
+        <!-- Depth is only meaningful when a focus seed is picked —
+             "All services" already seeds from up to 30 layer services
+             so a BFS-depth control would either be redundant or
+             explode the graph. -->
+        <label v-if="focusServiceNames.length > 0" class="depth-pick">
           <span>Depth</span>
           <select v-model.number="depth">
             <option :value="1">1 hop</option>
@@ -928,36 +945,40 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
                 stroke-width="14"
                 style="cursor: pointer"
               />
+              <!-- Base edge line. Uniform width across the canvas now
+                   that heaviest-path is gone — every edge is visually
+                   peer; selection brightens. -->
               <path
                 :d="callPathD(c)"
                 fill="none"
                 :stroke="selectedCallId === c.id ? 'var(--sw-accent-2)' : 'var(--sw-accent)'"
-                :stroke-width="selectedCallId === c.id ? 3.4 : heaviestEdges.has(c.id) ? 2.8 : 1.4"
-                :opacity="selectedCallId === c.id ? 1 : heaviestEdges.has(c.id) ? 0.95 : 0.6"
+                :stroke-width="selectedCallId === c.id ? 3.2 : 1.8"
+                :opacity="selectedCallId === c.id ? 1 : 0.7"
                 stroke-linecap="round"
                 style="pointer-events: none"
               />
-              <!-- Animated traffic dots — only on heavy / selected
-                   edges so the canvas doesn't shimmer everywhere.
-                   Mirrors the polished linear-chain design's "live
-                   flow" suggestion. -->
-              <template v-if="heaviestEdges.has(c.id) || selectedCallId === c.id">
-                <circle
-                  v-for="off in [0, 0.5, 1.0]"
-                  :key="off"
-                  r="2.2"
-                  :fill="selectedCallId === c.id ? 'var(--sw-accent-2)' : 'var(--sw-accent)'"
-                  opacity="0.85"
-                  style="pointer-events: none"
-                >
-                  <animateMotion
-                    :dur="`${2.4 + (off * 0.4)}s`"
-                    :begin="`${off}s`"
-                    repeatCount="indefinite"
-                    :path="callPathD(c)"
-                  />
-                </circle>
-              </template>
+              <!-- Direction overlay: a dashed stroke that scrolls along
+                   the path from source → target. Same stroke colour but
+                   higher-frequency dashes so the motion reads even on
+                   dense graphs without competing with the base line. -->
+              <path
+                :d="callPathD(c)"
+                fill="none"
+                :stroke="selectedCallId === c.id ? 'var(--sw-accent-2)' : 'var(--sw-accent)'"
+                :stroke-width="selectedCallId === c.id ? 3.2 : 1.8"
+                stroke-linecap="round"
+                stroke-dasharray="6 10"
+                opacity="0.9"
+                style="pointer-events: none"
+              >
+                <animate
+                  attributeName="stroke-dashoffset"
+                  from="16"
+                  to="0"
+                  dur="1.2s"
+                  repeatCount="indefinite"
+                />
+              </path>
               <!-- Edge metric chip — sits on the line midpoint with a
                    pill background. Compact by design (edge metrics
                    aren't the headline signal; they ride alongside the
@@ -979,14 +1000,14 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
                     height="20"
                     rx="10"
                     fill="var(--sw-bg-1)"
-                    :stroke="selectedCallId === c.id ? 'var(--sw-accent-2)' : heaviestEdges.has(c.id) ? 'var(--sw-accent)' : 'var(--sw-line-2)'"
+                    :stroke="selectedCallId === c.id ? 'var(--sw-accent-2)' : 'var(--sw-line-2)'"
                     :stroke-width="selectedCallId === c.id ? 1.4 : 1"
                   />
                   <text
                     x="38"
                     y="14"
                     text-anchor="middle"
-                    :fill="selectedCallId === c.id ? 'var(--sw-accent-2)' : heaviestEdges.has(c.id) ? 'var(--sw-accent-2)' : 'var(--sw-fg-1)'"
+                    :fill="selectedCallId === c.id ? 'var(--sw-accent-2)' : 'var(--sw-fg-1)'"
                     font-size="11"
                     font-family="var(--sw-mono)"
                     font-weight="700"
@@ -1031,13 +1052,6 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
                   opacity="0.7"
                 />
               </template>
-              <!-- Heavy-path halo when not selected. -->
-              <circle
-                v-else-if="heaviestNodes.has(n.id)"
-                r="50"
-                fill="var(--sw-accent)"
-                opacity="0.10"
-              />
               <!-- Outer ring (health). Dashed for client / external
                    to signal "untraced" (no agent here). Solid stroke
                    for real services. -->
@@ -1123,6 +1137,10 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
               <!-- Name below the node. Slightly larger now that the
                    circle radius is smaller — keeps the label as the
                    readable anchor for the node. -->
+              <!-- Node label = base name only. The group prefix
+                   (`<group>::base`) appears as a chip in the right
+                   sidebar; jamming it into the canvas label competes
+                   with the metric line below. -->
               <text
                 text-anchor="middle"
                 y="58"
@@ -1131,7 +1149,7 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
                 font-family="var(--sw-mono)"
                 :font-weight="selectedNodeId === n.id ? 700 : 600"
               >
-                {{ n.name.length > 22 ? n.name.slice(0, 20) + '…' : n.name }}
+                {{ truncateLabel(serviceBaseName(n.name), 22) }}
               </text>
               <!-- Metric line. Operator-configured `center` metric
                    in the ring colour; `secondary` next to it muted.
@@ -1185,9 +1203,7 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
           <div class="lg-row">
             <span class="lg-swatch" style="background: var(--sw-accent)" />
             <span>Calls</span>
-            <span class="lg-aside">
-              thicker = heaviest (by {{ lineServerDef?.label ?? 'server' }}<template v-if="lineClientDef"> · falls back to {{ lineClientDef.label }}</template>)
-            </span>
+            <span class="lg-aside">direction shown by flow animation</span>
           </div>
         </div>
         <div v-if="elidedTotal > 0" class="cap-chip">
@@ -1208,9 +1224,9 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
           <div class="sp-id">
             <div class="sp-mono">{{ selectedNode.name }}</div>
             <div class="sp-tags">
+              <span v-if="parseServiceName(selectedNode.name).group" class="sw-tag accent">{{ parseServiceName(selectedNode.name).group }}</span>
               <span v-for="l in selectedNode.layers" :key="l" class="sw-tag">{{ l }}</span>
               <span v-if="!selectedNode.isReal" class="sw-tag">virtual</span>
-              <span v-if="heaviestNodes.has(selectedNode.id)" class="sw-tag accent">main path</span>
             </div>
           </div>
           <button class="sw-btn small" type="button" @click="selectedNodeId = null">×</button>
@@ -1269,7 +1285,6 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
             </div>
             <div class="sp-tags">
               <span class="sw-tag">{{ selectedCall.detectPoints.join(' · ') || 'relation' }}</span>
-              <span v-if="heaviestEdges.has(selectedCall.id)" class="sw-tag accent">main path</span>
             </div>
           </div>
           <button class="sw-btn small" type="button" @click="selectedCallId = null">×</button>
@@ -1465,6 +1480,74 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
   font: inherit;
   font-size: 11px;
 }
+/* Focus selector — opens a search-driven multi-select panel anchored
+   to the button. Wide enough to read group + name in one row even on
+   long k8s service names. */
+.focus-wrap { position: relative; }
+.focus-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 160px;
+  justify-content: space-between;
+}
+.focus-btn .caret { font-size: 9px; color: var(--sw-fg-3); transition: transform 0.12s; }
+.focus-btn .caret.open { transform: rotate(180deg); }
+.focus-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 360px;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  z-index: 30;
+}
+.focus-search {
+  height: 32px;
+  padding: 0 10px;
+  margin-bottom: 6px;
+  background: var(--sw-bg-2);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 6px;
+  color: var(--sw-fg-0);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.focus-search:focus { border-color: var(--sw-accent-line); }
+.focus-list { overflow-y: auto; flex: 1 1 auto; }
+.focus-group-head {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sw-fg-3);
+  padding: 6px 8px 4px;
+}
+.focus-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--sw-fg-1);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.focus-row:hover { background: var(--sw-bg-2); color: var(--sw-fg-0); }
+.focus-row.selected { color: var(--sw-accent-2); }
+.focus-row .focus-check { width: 12px; text-align: center; color: var(--sw-accent); }
+.focus-row .focus-name { flex: 1; font-family: var(--sw-mono); }
+.focus-row .focus-aside { font-size: 10.5px; color: var(--sw-fg-3); }
+.focus-row.clear { border-bottom: 1px dashed var(--sw-line); padding-bottom: 8px; margin-bottom: 4px; }
+.focus-empty { padding: 16px; text-align: center; color: var(--sw-fg-3); font-size: 11.5px; }
 .banner.err {
   padding: 8px 12px;
   background: var(--sw-err-soft);

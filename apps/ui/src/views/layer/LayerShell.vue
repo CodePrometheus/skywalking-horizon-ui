@@ -39,6 +39,7 @@ import { useLayers } from '@/composables/useLayers';
 import { useSelectedService } from '@/composables/useSelectedService';
 import { useSetupStore } from '@/stores/setup';
 import { fmtMetric } from '@/utils/formatters';
+import { parseServiceName } from '@/utils/serviceName';
 
 const route = useRoute();
 const layerKey = computed(() => String(route.params.layerKey ?? ''));
@@ -84,9 +85,23 @@ const selectedRow = computed(
     sampledServices.value[0] ??
     null,
 );
-const selectedName = computed(
-  () => selectedRow.value?.serviceName ?? (sampledServices.value.length > 0 ? 'pick a service' : '—'),
-);
+const selectedParsed = computed(() => parseServiceName(selectedRow.value?.serviceName));
+const selectedGroup = computed(() => selectedParsed.value.group);
+// Switch-button label — base name only when the service has a group
+// prefix (`<group>::<base>` from OAP). The group is rendered as a
+// separate chip next to the caret so the user reads it without the
+// raw `::` syntax bleeding into the UI.
+const selectedName = computed(() => {
+  if (selectedRow.value) return selectedParsed.value.base;
+  return sampledServices.value.length > 0 ? 'pick a service' : '—';
+});
+
+// Routes can declare `meta: { ownsServiceSelector: true }` to opt out
+// of the shell-level service picker. Topology is the canonical example
+// (its in-box focus selector is the right place to scope the map);
+// future component-driven views (dashboards with their own filters,
+// say) can flip the same meta flag without touching this file.
+const viewOwnsServiceSelector = computed(() => Boolean(route.meta?.ownsServiceSelector));
 
 // Picker toggle state. Lives at the shell level so the header's Switch
 // button and the picker section render against the same state.
@@ -234,8 +249,13 @@ const serviceKpis = computed<HeaderKpi[]>(() => {
       <!-- Row 2: Switch button + selected-service KPIs. Distinct from
            the layer aggregates above — these are the picked service's
            per-row metric values (no sparklines; the service-scope
-           dashboard below carries the trend charts). -->
-      <div v-if="sampledServices.length > 0" class="service-row">
+           dashboard below carries the trend charts).
+
+           Hidden on the Topology route: the service map is layer-wide
+           by design (all services in the layer), and its in-box focus
+           selector is the right place to scope to a specific service
+           from inside that view. -->
+      <div v-if="sampledServices.length > 0 && !viewOwnsServiceSelector" class="service-row">
         <button
           class="sw-btn switch"
           type="button"
@@ -243,6 +263,7 @@ const serviceKpis = computed<HeaderKpi[]>(() => {
           @click="togglePicker"
         >
           <span class="caret">▾</span>
+          <span v-if="selectedGroup" class="svc-group">{{ selectedGroup }}</span>
           <span class="svc-name">{{ selectedName }}</span>
         </button>
         <div class="kpi-strip service-kpis">
@@ -262,7 +283,7 @@ const serviceKpis = computed<HeaderKpi[]>(() => {
          Sits below the General header so the page reads top-to-bottom:
          layer identity → expanded service picker → sub-route body. -->
     <LayerServiceSelector
-      v-if="layer && pickerOpen && sampledServices.length > 0"
+      v-if="layer && pickerOpen && sampledServices.length > 0 && !viewOwnsServiceSelector"
       :services="sampledServices"
       :columns="selectorColumns"
       :selected-id="selectedId"
@@ -375,6 +396,23 @@ const serviceKpis = computed<HeaderKpi[]>(() => {
   font-family: var(--sw-mono);
   color: var(--sw-fg-0);
   letter-spacing: -0.01em;
+}
+/* Group chip on the Switch button — surfaces OAP's `<group>::<base>`
+   prefix so the base name reads clean (e.g. `[agent] rating` instead
+   of `agent::rating`). */
+.switch .svc-group {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  background: var(--sw-bg-2);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sw-fg-2);
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 .icon-tile {
   width: 40px;

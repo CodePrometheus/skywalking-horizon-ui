@@ -145,7 +145,7 @@ const LIST_FIRST_SERVICE = /* GraphQL */ `
   }
 `;
 
-const DEFAULT_WINDOW_MIN = 15;
+const DEFAULT_WINDOW_MIN = 60;
 
 interface Window {
   start: string;
@@ -349,33 +349,48 @@ export function registerDashboardRoute(app: FastifyInstance, deps: DashboardRout
         reachable: true,
       };
 
-      // Step 1 — resolve service if not provided.
-      if (!serviceName) {
-        try {
-          const data = await graphqlPost<{ services: Array<{ id: string; name: string; normal: boolean }> }>(
-            opts,
-            LIST_FIRST_SERVICE,
-            { layer: layerKey.toUpperCase() },
-          );
-          const first = data.services?.[0];
-          if (first) {
-            serviceName = first.name;
-            normal = first.normal !== false;
-            baseResp.service = serviceName;
-          } else {
+      // Step 1 — resolve service. We always probe `listServices` so the
+      // correct `normal` flag rides along with the service entity. Some
+      // layers (VIRTUAL_MQ, VIRTUAL_DATABASE, VIRTUAL_CACHE, AWS_*) use
+      // `normal: false` services — without this look-up every MQE on
+      // those layers comes back null because the entity-scope filter
+      // doesn't match the data dimension OAP stored them under.
+      try {
+        const data = await graphqlPost<{ services: Array<{ id: string; name: string; normal: boolean }> }>(
+          opts,
+          LIST_FIRST_SERVICE,
+          { layer: layerKey.toUpperCase() },
+        );
+        const all = data.services ?? [];
+        let picked: { id: string; name: string; normal: boolean } | undefined;
+        if (serviceName) {
+          picked = all.find((s) => s.name === serviceName) ?? all.find((s) => s.id === serviceName);
+          if (!picked) {
+            return reply.send({
+              ...baseResp,
+              service: serviceName,
+              widgets: widgets.map((w) => ({ id: w.id, error: `service "${serviceName}" not in layer` })),
+            });
+          }
+        } else {
+          picked = all[0];
+          if (!picked) {
             return reply.send({
               ...baseResp,
               widgets: widgets.map((w) => ({ id: w.id, error: 'no service in layer' })),
             });
           }
-        } catch (err) {
-          return reply.send({
-            ...baseResp,
-            reachable: false,
-            error: err instanceof Error ? err.message : String(err),
-            widgets: widgets.map((w) => ({ id: w.id, error: 'oap unreachable' })),
-          });
         }
+        serviceName = picked.name;
+        normal = picked.normal !== false;
+        baseResp.service = serviceName;
+      } catch (err) {
+        return reply.send({
+          ...baseResp,
+          reachable: false,
+          error: err instanceof Error ? err.message : String(err),
+          widgets: widgets.map((w) => ({ id: w.id, error: 'oap unreachable' })),
+        });
       }
 
       // Step 2 — batch all widget × expression queries into one GraphQL trip.

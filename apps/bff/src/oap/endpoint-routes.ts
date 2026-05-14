@@ -65,7 +65,7 @@ const FIND_ENDPOINTS = /* GraphQL */ `
   }
 `;
 
-const DEFAULT_WINDOW_MIN = 15;
+const DEFAULT_WINDOW_MIN = 60;
 
 function fmtMinute(d: Date): string {
   const yyyy = d.getUTCFullYear();

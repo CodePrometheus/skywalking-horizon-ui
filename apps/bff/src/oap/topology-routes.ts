@@ -90,7 +90,7 @@ const LIST_SERVICES_FOR_RESOLVE = /* GraphQL */ `
   }
 `;
 
-const DEFAULT_WINDOW_MIN = 15;
+const DEFAULT_WINDOW_MIN = 60;
 function fmtMinute(d: Date): string {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -284,16 +284,23 @@ export function registerTopologyRoute(app: FastifyInstance, deps: TopologyRouteD
           knownServices.set(s.id, { id: s.id, name: s.name, normal: s.normal !== false });
         }
         if (serviceArg) {
-          const match =
-            data.services.find((s) => s.id === serviceArg) ??
-            data.services.find((s) => s.name === serviceArg) ??
-            null;
-          if (!match) {
+          // `service` accepts a comma-separated list of names/ids so
+          // the SPA can multi-seed without a separate query param. Any
+          // entry that doesn't resolve is reported back individually
+          // instead of failing the whole request.
+          const wants = serviceArg.split(',').map((s) => s.trim()).filter(Boolean);
+          const matches = wants.map((w) =>
+            data.services.find((s) => s.id === w) ??
+            data.services.find((s) => s.name === w) ??
+            null,
+          );
+          const missing = wants.filter((_, i) => matches[i] === null);
+          if (matches.every((m) => m === null)) {
             return reply.send(
-              emptyResponse(layerKey, serviceArg, depth, topoCfg, true, 'service not found'),
+              emptyResponse(layerKey, serviceArg, depth, topoCfg, true, `service${wants.length === 1 ? '' : 's'} not found: ${missing.join(', ')}`),
             );
           }
-          seedIds = [match.id];
+          seedIds = matches.filter((m): m is { id: string; name: string; normal?: boolean | null } => m !== null).map((m) => m.id);
         } else {
           seedIds = data.services.slice(0, 30).map((s) => s.id);
         }

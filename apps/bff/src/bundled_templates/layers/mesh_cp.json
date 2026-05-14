@@ -1,6 +1,6 @@
 {
   "key": "MESH_CP",
-  "alias": "Mesh Control Plane",
+  "alias": "Istio Control Plane",
   "color": "var(--sw-info)",
   "documentLink": "https://skywalking.apache.org/docs/main/next/en/setup/istio/readme/",
   "aliases": { "services": "Control Planes" },

@@ -185,9 +185,6 @@ const sections: NavSection[] = [
           :class="{ 'is-active': isActive(`/layer/${L.key}`) }"
         >
           <span class="layer-dot" :style="{ background: L.color }" />
-          <span class="layer-count" :title="`${L.serviceCount} service${L.serviceCount === 1 ? '' : 's'} reporting`">
-            {{ L.serviceCount }}
-          </span>
           <span class="layer-name">{{ L.name }}</span>
         </RouterLink>
 
@@ -199,9 +196,6 @@ const sections: NavSection[] = [
           @click="toggleLayer(L.key)"
         >
           <span class="layer-dot" :style="{ background: L.color }" />
-          <span class="layer-count" :title="`${L.serviceCount} service${L.serviceCount === 1 ? '' : 's'} reporting`">
-            {{ L.serviceCount }}
-          </span>
           <span class="layer-name" :style="{ fontWeight: expandedLayer === L.key ? 600 : 500 }">
             {{ L.name }}
           </span>
@@ -389,27 +383,6 @@ const sections: NavSection[] = [
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.layer-row .layer-count {
-  font-family: var(--sw-mono);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--sw-fg-1);
-  background: var(--sw-bg-2);
-  border: 1px solid var(--sw-line-2);
-  border-radius: 4px;
-  padding: 1px 4px;
-  /* Fixed width so every row's name starts at the same column even when
-     counts swing wildly (1 ↔ 1000+). The chip is right-aligned inside
-     so the digit always sits flush against the name. */
-  width: 34px;
-  flex: 0 0 34px;
-  text-align: right;
-}
-.layer-row.is-active .layer-count {
-  color: var(--sw-accent-2);
-  background: var(--sw-accent-soft);
-  border-color: var(--sw-accent-line);
 }
 .layer-row.direct {
   text-decoration: none;

@@ -28,6 +28,7 @@ import type { LandingColumn, LandingServiceRow } from '@skywalking-horizon-ui/ap
 import { metricMeta } from '@/composables/metricCatalog';
 import { statusForMetrics, thresholdColor } from '@/composables/metricColor';
 import { fmtMetric } from '@/utils/formatters';
+import { parseServiceName } from '@/utils/serviceName';
 
 const props = withDefaults(
   defineProps<{
@@ -101,7 +102,8 @@ function colorForStatus(s: 'ok' | 'warn' | 'err'): string {
         >
           <td class="svc-col" :title="row.serviceName">
             <span class="pulse" :style="{ background: colorForStatus(statusForMetrics(row.metrics)) }" />
-            <span class="name-text">{{ row.shortName || row.serviceName }}</span>
+            <span v-if="parseServiceName(row.serviceName).group" class="group-chip">{{ parseServiceName(row.serviceName).group }}</span>
+            <span class="name-text">{{ row.shortName || parseServiceName(row.serviceName).base }}</span>
           </td>
           <td
             v-for="c in columns"
@@ -246,6 +248,27 @@ function colorForStatus(s: 'ok' | 'warn' | 'err'): string {
   font-family: var(--sw-mono);
   color: var(--sw-fg-0);
   font-size: 11.5px;
+}
+/* Group prefix from OAP's `<group>::<base>` naming — surfaced as a
+   compact tag so the base name is the first thing the eye lands on.
+   Trims `agent::rating` → [agent] rating, etc. */
+.group-chip {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  background: var(--sw-bg-2);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sw-fg-2);
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.row.active .group-chip {
+  color: var(--sw-accent-2);
+  border-color: var(--sw-accent-line);
 }
 .pager {
   display: flex;

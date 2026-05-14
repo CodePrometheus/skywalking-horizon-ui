@@ -87,7 +87,7 @@ const LIST_SERVICES_QUERY = /* GraphQL */ `
   }
 `;
 
-const DEFAULT_WINDOW_MIN = 15;
+const DEFAULT_WINDOW_MIN = 60;
 const SERVICE_QUERY_CAP = 25;
 
 const aggSchema = z.enum(['sum', 'avg']);

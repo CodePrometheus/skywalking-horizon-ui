@@ -49,7 +49,15 @@ function layerRoute(): RouteRecordRaw {
       { path: 'service', component: () => import('@/views/layer/LayerDashboardsView.vue') },
       { path: 'instance', component: () => import('@/views/layer/LayerDashboardsView.vue') },
       { path: 'endpoint', component: () => import('@/views/layer/LayerDashboardsView.vue') },
-      { path: 'topology', component: () => import('@/views/layer/LayerServiceMapView.vue') },
+      {
+        path: 'topology',
+        component: () => import('@/views/layer/LayerServiceMapView.vue'),
+        // The topology page ships its own in-box service-focus selector
+        // (the map is layer-wide by default). Declaring it here keeps
+        // the LayerShell's header picker hidden for this route — no
+        // route-string sniffing in the shell.
+        meta: { ownsServiceSelector: true },
+      },
       { path: 'dependency', component: () => import('@/views/layer/LayerEndpointDependencyView.vue') },
       { path: 'trace', component: () => import('@/views/layer/LayerTracesView.vue') },
       { path: 'logs', component: () => import('@/views/layer/LayerLogsView.vue') },

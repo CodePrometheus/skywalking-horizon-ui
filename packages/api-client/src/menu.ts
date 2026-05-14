@@ -173,6 +173,13 @@ export interface LayerDef {
   serviceCount: number;
   /** True iff OAP returned this layer in `listLayers` (services reporting). */
   active: boolean;
+  /** OAP's per-service `normal` flag, sampled from the first service in
+   *  the layer. In practice every service within a layer shares the
+   *  same value (VIRTUAL_*, AWS_* are all `false`; GENERAL/MESH/etc are
+   *  all `true`), so a single bool per layer is faithful. `null` when
+   *  the layer has no services reporting. The MQE entity scope on the
+   *  dashboard / landing routes pivots on this. */
+  normal?: boolean | null;
   /** Hierarchy level from `listLayerLevels`; null if not in the hierarchy table. */
   level: number | null;
   /** External documentation link from `getMenuItems.documentLink`. */

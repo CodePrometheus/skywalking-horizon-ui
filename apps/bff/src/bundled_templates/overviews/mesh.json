@@ -1,12 +1,12 @@
 {
   "id": "mesh",
-  "title": "Mesh service",
-  "description": "Service-mesh overview — control-plane + data-plane signals with the K8s service-count cross-referenced.",
+  "title": "Istio Managed SVCs",
+  "description": "Istio-mesh overview — control-plane + data-plane signals with the K8s service-count cross-referenced.",
   "widgets": [
     {
       "id": "m_count",
-      "title": "Active mesh services",
-      "tip": "Services routed through the mesh data-plane.",
+      "title": "Active Istio services",
+      "tip": "Services routed through the Istio data-plane.",
       "layer": "MESH",
       "type": "service-count",
       "span": 3,
@@ -14,8 +14,8 @@
     },
     {
       "id": "m_rpm",
-      "title": "Mesh RPM",
-      "tip": "Mesh-wide requests per minute.",
+      "title": "Istio RPM",
+      "tip": "Istio-mesh-wide requests per minute.",
       "layer": "MESH",
       "type": "metric",
       "mqe": "service_mesh_cpm",
@@ -27,7 +27,7 @@
     {
       "id": "m_p99",
       "title": "P99 latency",
-      "tip": "99th-percentile response time across mesh-routed traffic.",
+      "tip": "99th-percentile response time across Istio-routed traffic.",
       "layer": "MESH",
       "type": "metric",
       "mqe": "service_mesh_percentile{p='99'}",
@@ -71,8 +71,8 @@
     },
     {
       "id": "m_topo",
-      "title": "Mesh service topology",
-      "tip": "Live service map for the mesh data-plane.",
+      "title": "Istio service topology",
+      "tip": "Live service map for the Istio data-plane.",
       "layer": "MESH",
       "type": "topology",
       "span": 12,

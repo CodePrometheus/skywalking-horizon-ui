@@ -1,6 +1,6 @@
 {
   "key": "MESH",
-  "alias": "Service Mesh",
+  "alias": "Istio Managed SVCs",
   "color": "var(--sw-info)",
   "documentLink": "https://skywalking.apache.org/docs/main/next/en/setup/envoy/als_setting/",
   "aliases": {

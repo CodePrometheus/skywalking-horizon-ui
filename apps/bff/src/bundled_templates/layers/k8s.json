@@ -162,7 +162,8 @@
           "containers"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "deployment_replicas",
@@ -178,7 +179,8 @@
           "status"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "pod_waiting",
@@ -188,7 +190,8 @@
           "latest(k8s_cluster_pod_status_waiting)"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "pod_not_running",
@@ -198,7 +201,8 @@
           "latest(k8s_cluster_pod_status_not_running)"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "service_pod_status",
@@ -209,7 +213,8 @@
           "latest(k8s_cluster_service_pod_status)"
         ],
         "span": 4,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "node_status",
@@ -220,7 +225,8 @@
           "latest(k8s_cluster_node_status)"
         ],
         "span": 4,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "namespace_totals",
@@ -240,7 +246,8 @@
           "daemonsets"
         ],
         "span": 4,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       }
     ],
     "instance": [
@@ -252,7 +259,8 @@
           "latest(k8s_node_node_status)"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "node_pod_total",

@@ -107,6 +107,18 @@ export interface DashboardWidget {
   /** Suffix unit (`%`, `ms`, `calls / min`). */
   unit?: string;
   /**
+   * Numeric formatting override. Defaults to the SPA's smart
+   * compact-readable rule (1 decimal under 100, integer ≥ 100, SI
+   * suffix ≥ 10k). Set explicitly when the metric is intrinsically
+   * integral (pod count, replica count, error count) so the value
+   * reads as `8` not `8.0`.
+   *
+   *   - `'int'`     → round to nearest integer (no decimals)
+   *   - `'decimal'` → always 1 decimal place
+   *   - `'compact'` → the default smart rule (explicit opt-in is fine)
+   */
+  format?: 'int' | 'decimal' | 'compact';
+  /**
    * Column span in a 12-column flow grid. Default 4. Widgets pack via
    * `grid-auto-flow: dense` so positions are dynamic — operators
    * describe a widget's width once and the grid lays it out.

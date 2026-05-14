@@ -41,7 +41,7 @@ import { useSelectedEndpoint } from '@/composables/useSelectedEndpoint';
 import { useSelectedInstance } from '@/composables/useSelectedInstance';
 import { useSelectedService } from '@/composables/useSelectedService';
 import { useSetupStore } from '@/stores/setup';
-import { fmtMetric } from '@/utils/formatters';
+import { fmtMetricAs } from '@/utils/formatters';
 import { ref, watch, watchEffect } from 'vue';
 
 const route = useRoute();
@@ -487,7 +487,7 @@ function isVisible(
           <template v-else-if="w.type === 'card'">
             <div class="card-value">
               <span class="num" :class="{ muted: resultsById.get(w.id)?.value == null }">
-                {{ fmtMetric(resultsById.get(w.id)?.value ?? null) }}
+                {{ fmtMetricAs(resultsById.get(w.id)?.value ?? null, w.format) }}
               </span>
               <span v-if="w.unit" class="unit">{{ w.unit }}</span>
             </div>
@@ -499,6 +499,7 @@ function isVisible(
               :unit="w.unit"
               :height="(w.rowSpan ?? 1) * 110 - 50"
               :accent="widgetColor(w)"
+              :format="w.format"
             />
             <span v-else class="muted">no data</span>
           </template>

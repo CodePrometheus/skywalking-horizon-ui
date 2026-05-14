@@ -50,12 +50,29 @@ const props = withDefaults(
     /** Color hint for the first series (subsequent series cycle through
      *  a default palette so percentile lines remain distinguishable). */
     accent?: string;
+    /** Numeric format hint — `'int'` rounds all axis labels + tooltip
+     *  values to integers (pod counts, replica counts, error counts).
+     *  Defaults to the compact-readable rule. */
+    format?: 'int' | 'decimal' | 'compact';
   }>(),
   {
     height: 180,
     accent: 'var(--sw-accent)',
   },
 );
+
+function formatVal(v: number): string {
+  if (props.format === 'int') return Math.round(v).toString();
+  if (props.format === 'decimal') return v.toFixed(1);
+  // Default: two decimals on tooltip / smart on axis (echarts handles
+  // axis labels itself when no formatter is set).
+  return v.toFixed(2);
+}
+function formatAxis(v: number): string {
+  if (props.format === 'int') return Math.round(v).toString();
+  // Let echarts default-handle non-int axis formatting.
+  return String(v);
+}
 
 /**
  * Resolve a CSS variable like `var(--sw-accent)` to its computed RGB
@@ -110,7 +127,7 @@ function buildOption(): echarts.EChartsCoreOption {
       confine: false,
       valueFormatter: (v: unknown) =>
         typeof v === 'number' && Number.isFinite(v)
-          ? `${v.toFixed(2)}${props.unit ? ` ${props.unit}` : ''}`
+          ? `${formatVal(v)}${props.unit ? ` ${props.unit}` : ''}`
           : '—',
     },
     legend: {
@@ -165,7 +182,7 @@ function buildOption(): echarts.EChartsCoreOption {
           nameTextStyle: { color: '#64748b', fontSize: 9, padding: [0, 0, 0, 0] },
           nameGap: 8,
           axisLine: { show: false },
-          axisLabel: { color: '#64748b', fontSize: 9 },
+          axisLabel: { color: '#64748b', fontSize: 9, formatter: (v: number) => formatAxis(v) },
           splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
         },
       ];
@@ -176,7 +193,7 @@ function buildOption(): echarts.EChartsCoreOption {
           nameTextStyle: { color: '#64748b', fontSize: 9 },
           nameGap: 8,
           axisLine: { show: false },
-          axisLabel: { color: '#64748b', fontSize: 9 },
+          axisLabel: { color: '#64748b', fontSize: 9, formatter: (v: number) => formatAxis(v) },
           splitLine: { show: false },
         });
       }

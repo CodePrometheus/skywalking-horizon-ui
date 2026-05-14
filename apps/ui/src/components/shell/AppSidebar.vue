@@ -96,29 +96,18 @@ const sidebarEntries = computed<SidebarEntry[]>(() => {
 });
 const openGroups = ref<Set<string>>(new Set());
 function isGroupOpen(label: string): boolean { return openGroups.value.has(label); }
-// Clicking a group header opens it AND jumps to the first layer in
-// the group's Service page — saves the operator one extra click when
-// they know which group they want but not which specific layer. If
-// the group is already open the click still navigates to the first
-// layer (handy for "back to top of section"); only collapse the group
-// when the user clicks its already-open header AND they're already on
-// one of its pages.
+// Plain toggle — click open if closed, click close if open. Opening
+// also navigates to the first layer's Service page so the operator
+// lands on actionable content; closing is purely a section collapse
+// (no nav, so they don't get yanked away from their current page).
 function toggleGroup(label: string, layers: SidebarLayer[]): void {
   const wasOpen = openGroups.value.has(label);
   const next = new Set(openGroups.value);
-  const first = layers[0];
-  if (wasOpen) {
-    // Collapse the section, but only when the user isn't actively on
-    // a page within it (otherwise the collapse would hide their
-    // current location).
-    const inThisGroup = layers.some((L) => route.path.startsWith(`/layer/${L.key}`));
-    if (!inThisGroup) next.delete(label);
-  } else {
-    next.add(label);
-  }
+  if (wasOpen) next.delete(label);
+  else next.add(label);
   openGroups.value = next;
-  if (first) {
-    void router.push(`/layer/${first.key}/service`);
+  if (!wasOpen && layers[0]) {
+    void router.push(`/layer/${layers[0].key}/service`);
   }
 }
 

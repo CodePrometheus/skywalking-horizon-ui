@@ -38,3 +38,36 @@ export function fmtMetric(v: number | null | undefined): string {
   if (abs === 0) return '0';
   return v.toFixed(2);
 }
+
+/**
+ * Format variant honoring an explicit widget / metric `format` hint.
+ *
+ *   - `'int'`     → round to nearest integer (`8` not `8.0`). Still SI-
+ *                   suffixed for large values (`12k`, `1M`) — operators
+ *                   never want a literal `1234567` in a card.
+ *   - `'decimal'` → always one decimal place, no SI.
+ *   - `'compact'` / undefined → defer to {@link fmtMetric}.
+ *
+ * Used by metrics that are intrinsically integral (pod count, replica
+ * count) or that need a known number of decimals (latency targets at
+ * 3-decimal precision, say). The `format` field rides on
+ * `DashboardWidget` so it's part of the bundled layer JSON.
+ */
+export type MetricFormat = 'int' | 'decimal' | 'compact';
+export function fmtMetricAs(
+  v: number | null | undefined,
+  format: MetricFormat | undefined,
+): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  if (format === 'int') {
+    const abs = Math.abs(v);
+    if (abs >= 1_000_000_000) return `${Math.round(v / 1_000_000_000)}B`;
+    if (abs >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
+    if (abs >= 10_000) return `${Math.round(v / 1_000)}k`;
+    return Math.round(v).toString();
+  }
+  if (format === 'decimal') {
+    return v.toFixed(1);
+  }
+  return fmtMetric(v);
+}

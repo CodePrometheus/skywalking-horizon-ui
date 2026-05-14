@@ -167,7 +167,7 @@ const refreshTooltip = computed<string>(() => {
       </RouterLink>
       <div class="sw-btn" :class="{ 'is-disabled': ownsTimeRange }" :title="globalTimeTooltip">
         <Icon name="clock" :size="12" />
-        <span>{{ ownsTimeRange ? 'Page time range' : 'Last 30 minutes' }}</span>
+        <span>{{ ownsTimeRange ? 'Page time range' : 'Last 60 minutes' }}</span>
         <Icon name="caret" :size="10" />
       </div>
       <!-- Auto-refresh cluster: countdown + spinning button on the

@@ -116,7 +116,8 @@
           "restarts"
         ],
         "span": 4,
-        "rowSpan": 2
+        "rowSpan": 2,
+        "format": "int"
       },
       {
         "id": "cpu_resources",

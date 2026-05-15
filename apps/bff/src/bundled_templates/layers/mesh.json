@@ -23,7 +23,8 @@
     "topology": true,
     "traces": true,
     "logs": true,
-    "ebpfProfiling": true
+    "ebpfProfiling": true,
+    "networkProfiling": true
   },
   "layer-header": {
     "orderBy": "cpm",

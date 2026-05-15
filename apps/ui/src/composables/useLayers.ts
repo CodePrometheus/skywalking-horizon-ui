@@ -94,7 +94,13 @@ export function useLayers() {
  */
 export function firstLayerTab(L: LayerDef | undefined): string {
   if (!L) return 'service';
-  if (L.slots?.services || L.caps?.dashboards) return 'service';
+  // `caps.dashboards` is derived from `components.service !== false`,
+  // so it's the authoritative enable-flag for the per-service page.
+  // Some layers (MESH_DP — sidecar-only; SO11Y_*_AGENT — per-JVM) have
+  // a non-empty `slots.services` label (used elsewhere for breadcrumbs)
+  // but no service component; previously the truthy slot label was
+  // pushing those layers onto an empty `/service` page.
+  if (L.caps?.dashboards) return 'service';
   if (L.caps?.instances ?? Boolean(L.slots?.instances)) return 'instance';
   if (L.caps?.endpoints ?? Boolean(L.slots?.endpoints)) return 'endpoint';
   if (L.caps?.serviceMap || L.caps?.instanceTopology || L.caps?.processTopology) return 'topology';
@@ -103,6 +109,8 @@ export function firstLayerTab(L: LayerDef | undefined): string {
   if (L.caps?.logs) return 'logs';
   if (L.caps?.traceProfiling) return 'trace-profiling';
   if (L.caps?.ebpfProfiling) return 'ebpf-profiling';
+  if (L.caps?.networkProfiling) return 'network-profiling';
   if (L.caps?.asyncProfiling) return 'async-profiling';
+  if (L.caps?.pprofProfiling) return 'pprof';
   return 'service';
 }

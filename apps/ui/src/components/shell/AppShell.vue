@@ -19,6 +19,7 @@ import { RouterView } from 'vue-router';
 import AppSidebar from './AppSidebar.vue';
 import AppTopbar from './AppTopbar.vue';
 import TracePopout from '@/components/trace/TracePopout.vue';
+import ZipkinTracePopout from '@/components/trace/ZipkinTracePopout.vue';
 </script>
 
 <template>
@@ -31,5 +32,10 @@ import TracePopout from '@/components/trace/TracePopout.vue';
     <!-- Global trace-id popout: any page can call useTracePopout().openTrace(id)
          and this modal renders the waterfall + span detail. -->
     <TracePopout />
+    <!-- Zipkin trace popout — separate URL key (`?openZipkinTraceId=`)
+         so the native + Zipkin popouts can be open in parallel without
+         collision (e.g. an operator drilling into a Zipkin trace from
+         a Logs row → trace link on a mesh layer). -->
+    <ZipkinTracePopout />
   </div>
 </template>

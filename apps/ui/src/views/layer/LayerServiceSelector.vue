@@ -38,9 +38,11 @@ const props = withDefaults(
     selectedId: string | null;
     accent?: string;
     pageSize?: number;
-    /** Per-layer service-name parsing rule. When supplied, rows render
-     *  `<alias · value>` chip + display label; when null, falls back to
-     *  the legacy `<group>::base` parser. */
+    /** Per-layer topology-cluster rule. When supplied, rows render a
+     *  cluster chip; when null, no chip. The OAP `<group>::` legacy
+     *  prefix is always stripped from the displayed label in this
+     *  selector — it's the global service picker, not the topology
+     *  view, so per-topology `showGroup` doesn't apply here. */
     namingRule?: ServiceNamingRule | null;
   }>(),
   {
@@ -111,9 +113,9 @@ function colorForStatus(s: 'ok' | 'warn' | 'err'): string {
         >
           <td class="svc-col" :title="row.serviceName">
             <span class="pulse" :style="{ background: colorForStatus(statusForMetrics(row.metrics)) }" />
-            <span v-if="identity(row.serviceName).group" class="group-chip">
-              <span class="chip-alias">{{ identity(row.serviceName).alias }}</span>
-              <span class="chip-val">{{ identity(row.serviceName).group }}</span>
+            <span v-if="identity(row.serviceName).cluster" class="group-chip">
+              <span class="chip-alias">{{ identity(row.serviceName).clusterAlias }}</span>
+              <span class="chip-val">{{ identity(row.serviceName).cluster }}</span>
             </span>
             <span class="name-text">{{ row.shortName || identity(row.serviceName).display }}</span>
           </td>

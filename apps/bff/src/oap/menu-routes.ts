@@ -49,6 +49,8 @@ function componentsToCaps(components: LayerComponentFlags): LayerCaps {
     traceProfiling: !!components.traceProfiling,
     ebpfProfiling: !!components.ebpfProfiling,
     asyncProfiling: !!components.asyncProfiling,
+    networkProfiling: !!components.networkProfiling,
+    pprofProfiling: !!components.pprofProfiling,
     events: false,
     // Bundled service-count tile defaults on — every layer benefits
     // from the headline count, and operators can opt out per-layer
@@ -195,6 +197,7 @@ function deriveLayer(
       metrics: tpl.metrics,
       overview: tpl.overview,
       log: tpl.log,
+      traces: tpl.traces,
       naming: tpl.naming,
     };
   }

@@ -28,6 +28,7 @@
 -->
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import type { AdminLayerTemplate } from '@/api/client';
 import type {
   DashboardScope,
@@ -94,16 +95,50 @@ async function loadAll(): Promise<void> {
   try {
     const res = await bffClient.adminLayerTemplates();
     templates.value = res.templates;
-    if (res.templates.length > 0 && !selectedKey.value) {
+    // Hydrate from `?layer=&scope=` first; fall back to the first
+    // template only when the URL doesn't pin a layer. This preserves
+    // refresh state.
+    const queryLayer = String(route.query.layer ?? '').toUpperCase();
+    const matchedQuery = res.templates.find((t) => t.key === queryLayer);
+    if (matchedQuery) {
+      selectedKey.value = matchedQuery.key;
+    } else if (res.templates.length > 0 && !selectedKey.value) {
       selectedKey.value = res.templates[0].key;
+    }
+    const queryScope = String(route.query.scope ?? '');
+    if (SCOPES.includes(queryScope as DashboardScope)) {
+      activeScope.value = queryScope as DashboardScope;
     }
     syncDraft();
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
     isLoading.value = false;
+    // Hand control to the URL-sync watcher only after the initial
+    // hydrate so it doesn't immediately overwrite the seed query
+    // params we just read in.
+    nextTick(() => {
+      suppressRouteSync = false;
+    });
   }
 }
+
+// URL ↔ state sync. Pushes `?layer=&scope=` on every selection change
+// so refreshing the page (or sharing the URL) keeps the admin focused
+// on the same layer + scope. Skipped while initial templates load so
+// the boot-up `loadAll()` hydrate doesn't bounce the URL.
+const route = useRoute();
+const router = useRouter();
+let suppressRouteSync = true;
+watch(
+  [selectedKey, activeScope],
+  ([key, scope]) => {
+    if (suppressRouteSync) return;
+    if (!key) return;
+    const q = { ...route.query, layer: key, scope };
+    void router.replace({ path: route.path, query: q });
+  },
+);
 
 function syncDraft(): void {
   const tpl = templates.value.find((t) => t.key === selectedKey.value);
@@ -664,6 +699,99 @@ function toggleComponent(key: ComponentKey): void {
   const c = ensureComponents();
   c[key] = !c[key];
 }
+
+// ── Topology cluster setup — rule editor + live tester.
+// The rule is a named-capture regex run against every service name in
+// the topology + service pickers. Operators bind which capture maps to
+// the display label vs the cluster value (e.g. k8s namespace), and
+// pick a human-readable alias (`namespace`, `tenant`, …). The tester
+// evaluates the live draft against a sample name so operators can see
+// the resolved `{ display, cluster, alias }` before saving. Distinct
+// from OAP's layer-agnostic `<group>::<base>` prefix (which is a
+// global naming convention, never produces a cluster box).
+type NamingRule = NonNullable<AdminLayerTemplate['naming']>;
+function namingDefault(): NamingRule {
+  return {
+    pattern: '^(?<service>[^.]+)\\.(?<namespace>[^.]+)(?:\\..*)?$',
+    flags: '',
+    displayGroup: 'service',
+    valueGroup: 'namespace',
+    alias: 'namespace',
+  };
+}
+function enableNaming(): void {
+  if (!draft.template) return;
+  draft.template.naming = namingDefault();
+}
+function disableNaming(): void {
+  if (!draft.template) return;
+  draft.template.naming = undefined;
+}
+/**
+ * Toggle the `showGroup` flag on the current scope's config block
+ * (topology or endpoint-dependency). Controls whether the legacy
+ * `<group>::` prefix surfaces as a separate chip in the node detail
+ * panel of that scope. Default off everywhere.
+ */
+function toggleShowGroup(): void {
+  if (!draft.template) return;
+  if (activeScope.value === 'topology') {
+    const t = ensureTopology();
+    t.showGroup = !t.showGroup;
+  } else if (activeScope.value === 'dependency') {
+    const t = ensureEndpointDep();
+    t.showGroup = !t.showGroup;
+  }
+}
+const showGroupForScope = computed<boolean>(() => {
+  const t = draft.template;
+  if (!t) return false;
+  if (activeScope.value === 'topology') return Boolean(t.topology?.showGroup);
+  if (activeScope.value === 'dependency') return Boolean(t.endpointDependency?.showGroup);
+  return false;
+});
+
+// Pointer from the topology scope panel ⤴ to the always-visible
+// Topology cluster card. Smooth-scrolls and briefly highlights so the
+// operator's eye lands on it without ambiguity.
+function scrollToClusterCard(): void {
+  const el = document.getElementById('topology-cluster');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.classList.add('cluster-pulse');
+  setTimeout(() => el.classList.remove('cluster-pulse'), 1400);
+}
+const namingSample = ref<string>('songs.sample.svc.cluster.local');
+interface NamingTestResult {
+  ok: boolean;
+  display: string | null;
+  group: string | null;
+  alias: string | null;
+  error: string | null;
+}
+const namingTest = computed<NamingTestResult>(() => {
+  const rule = draft.template?.naming;
+  if (!rule) return { ok: false, display: null, group: null, alias: null, error: 'no rule configured' };
+  if (!rule.pattern) return { ok: false, display: null, group: null, alias: null, error: 'pattern required' };
+  let re: RegExp;
+  try {
+    re = new RegExp(rule.pattern, rule.flags ?? '');
+  } catch (err) {
+    return { ok: false, display: null, group: null, alias: null, error: err instanceof Error ? err.message : 'invalid regex' };
+  }
+  const m = namingSample.value.match(re);
+  if (!m || !m.groups) {
+    return { ok: false, display: null, group: null, alias: rule.alias, error: 'no match' };
+  }
+  const displayKey = rule.displayGroup || 'service';
+  const valueKey = rule.valueGroup || 'group';
+  const display = m.groups[displayKey] ?? null;
+  const group = m.groups[valueKey] ?? null;
+  if (!display && !group) {
+    return { ok: false, display: null, group: null, alias: rule.alias, error: `neither capture "${displayKey}" nor "${valueKey}" resolved` };
+  }
+  return { ok: true, display, group, alias: rule.alias, error: null };
+});
 </script>
 
 <template>
@@ -788,6 +916,127 @@ function toggleComponent(key: ComponentKey): void {
           </div>
         </section>
 
+        <!-- Topology cluster setup: a named-capture regex run against
+             every service name. The topology view buckets nodes by the
+             resolved cluster value (e.g. k8s namespace) and renders an
+             `<alias · value>` chip next to the service display label.
+             Distinct from the layer-agnostic OAP `<group>::<base>`
+             prefix convention, which is global and never produces a
+             topology cluster — clusters are explicit per-layer opt-in.
+             Live tester at the bottom evaluates the current draft
+             against a sample name so the operator can see the result
+             before saving. -->
+        <section id="topology-cluster" class="sw-card components-card">
+          <div class="card-head">
+            <h4>Topology cluster setup</h4>
+            <span class="sub">parse service name → display label + cluster dimension (k8s/mesh namespace, tenant, fleet, …)</span>
+            <button
+              v-if="!selectedTpl.naming"
+              class="sw-btn add"
+              type="button"
+              @click="enableNaming"
+            >＋ Enable rule</button>
+            <button
+              v-else
+              class="sw-btn small ghost danger"
+              type="button"
+              @click="disableNaming"
+            >Remove rule</button>
+          </div>
+          <div v-if="!selectedTpl.naming" class="topo-cfg-help" style="padding: 12px 16px;">
+            No cluster rule configured — the topology view renders without cluster bounding
+            boxes. Enable a rule for layers whose service names encode a cluster dimension
+            (k8s namespace, fleet, tenant) so topology can cluster nodes accordingly.
+          </div>
+          <div v-else class="naming-body">
+            <div class="naming-row">
+              <label class="mf mf-wide">
+                <span>regex pattern</span>
+                <input
+                  v-model="selectedTpl.naming.pattern"
+                  class="mf-input mono"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="^(?<service>[^.]+)\.(?<namespace>[^.]+)$"
+                />
+              </label>
+              <label class="mf mf-narrow" title="JavaScript regex flags: i = case-insensitive, m = multiline, s = dotall, u = unicode. Service names are case-sensitive single-line strings, so this is almost always empty.">
+                <span>regex flags</span>
+                <input
+                  v-model="selectedTpl.naming.flags"
+                  class="mf-input mono"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="(empty)"
+                />
+              </label>
+            </div>
+            <div class="naming-flags-hint">
+              <code>flags</code> are passed as the second argument to
+              <code>new RegExp(pattern, flags)</code>. Common values: <code>i</code>
+              (case-insensitive), <code>m</code> (multiline). Leave empty for typical
+              k8s/mesh service names.
+            </div>
+            <div class="naming-row">
+              <label class="mf">
+                <span>display capture</span>
+                <input
+                  v-model="selectedTpl.naming.displayGroup"
+                  class="mf-input mono"
+                  type="text"
+                  placeholder="service"
+                />
+              </label>
+              <label class="mf">
+                <span>cluster capture</span>
+                <input
+                  v-model="selectedTpl.naming.valueGroup"
+                  class="mf-input mono"
+                  type="text"
+                  placeholder="namespace"
+                />
+              </label>
+              <label class="mf">
+                <span>alias (cluster label)</span>
+                <input
+                  v-model="selectedTpl.naming.alias"
+                  class="mf-input"
+                  type="text"
+                  placeholder="namespace"
+                />
+              </label>
+            </div>
+            <div class="naming-test">
+              <label class="mf mf-wide">
+                <span>test service name</span>
+                <input
+                  v-model="namingSample"
+                  class="mf-input mono"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="songs.sample"
+                />
+              </label>
+              <div class="naming-result" :class="{ ok: namingTest.ok, err: !namingTest.ok }">
+                <div v-if="namingTest.error" class="naming-error">
+                  <span class="naming-tag">error</span>
+                  <span>{{ namingTest.error }}</span>
+                </div>
+                <template v-else>
+                  <div class="naming-result-row">
+                    <span class="naming-tag">display</span>
+                    <span class="mono">{{ namingTest.display ?? '—' }}</span>
+                  </div>
+                  <div class="naming-result-row">
+                    <span class="naming-tag">{{ namingTest.alias ?? 'group' }}</span>
+                    <span class="mono accent">{{ namingTest.group ?? '—' }}</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Service-list metrics: the columns shown in the picker
              zone's services table + the default sort. Used across
              the per-layer page. -->
@@ -905,6 +1154,34 @@ function toggleComponent(key: ComponentKey): void {
           <div class="card-head">
             <h4>Topology config</h4>
             <span class="sub">node + server-side + client-side line metrics. Add rows; bind a metric to a visual role.</span>
+          </div>
+          <div class="topo-cluster-pointer">
+            <span class="topo-cluster-pointer-icon">⤴</span>
+            <span>
+              Cluster setup (k8s/mesh namespace grouping) lives in
+              <a href="#topology-cluster" @click.prevent="scrollToClusterCard">Topology cluster setup</a>
+              above.
+            </span>
+          </div>
+          <!-- showGroup: per-topology toggle for the legacy `<group>::`
+               prefix chip in the node detail panel. Off (default) ⇒
+               prefix never appears in the UI. On ⇒ surfaces as its own
+               chip in the panel header. Topology node labels stay
+               clean regardless. -->
+          <div class="naming-prefix-row">
+            <label class="comp-toggle" :class="{ on: showGroupForScope }">
+              <input
+                type="checkbox"
+                :checked="showGroupForScope"
+                @change="toggleShowGroup"
+              />
+              <span class="comp-label">Show <code>&lt;group&gt;::</code> as a chip in the node panel</span>
+            </label>
+            <span class="naming-prefix-hint">
+              Off: <code>mesh-svr::reviews</code> reads as <code>reviews</code> everywhere.
+              On: <code>mesh-svr</code> appears as a separate chip in the clicked-node panel.
+              Topology graph labels are always pure service names.
+            </span>
           </div>
           <div class="topo-cfg-body">
             <div class="topo-cfg-section">
@@ -1043,6 +1320,17 @@ function toggleComponent(key: ComponentKey): void {
           <div class="card-head">
             <h4>API dependency config</h4>
             <span class="sub">node + line metrics (server-side only — OAP has no endpoint client family).</span>
+          </div>
+          <div class="naming-prefix-row">
+            <label class="comp-toggle" :class="{ on: showGroupForScope }">
+              <input
+                type="checkbox"
+                :checked="showGroupForScope"
+                @change="toggleShowGroup"
+              />
+              <span class="comp-label">Show <code>&lt;group&gt;::</code> as a chip in the node panel</span>
+            </label>
+            <span class="naming-prefix-hint">Same semantics as the topology view's flag.</span>
           </div>
           <div class="topo-cfg-body">
             <div class="topo-cfg-section">
@@ -1712,6 +2000,129 @@ function toggleComponent(key: ComponentKey): void {
   background: var(--sw-accent-soft);
   border-color: var(--sw-accent-line);
   color: var(--sw-accent-2);
+}
+/* Topology-config → cluster-setup pointer banner. */
+.topo-cluster-pointer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 14px 0;
+  padding: 8px 12px;
+  background: var(--sw-accent-soft);
+  border: 1px solid var(--sw-accent-line);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--sw-fg-1);
+}
+.topo-cluster-pointer-icon {
+  font-size: 14px;
+  color: var(--sw-accent-2);
+}
+.topo-cluster-pointer a {
+  color: var(--sw-accent-2);
+  text-decoration: underline;
+}
+/* Brief pulse when arrowed-into from the topology config panel. */
+@keyframes cluster-pulse-frames {
+  0%   { box-shadow: 0 0 0 0 var(--sw-accent-line); }
+  40%  { box-shadow: 0 0 0 6px var(--sw-accent-line); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.cluster-pulse {
+  animation: cluster-pulse-frames 1.2s ease-out;
+}
+.naming-flags-hint {
+  margin: -4px 0 4px;
+  font-size: 11px;
+  color: var(--sw-fg-3);
+  padding: 0 4px;
+}
+.naming-flags-hint code {
+  font-family: var(--sw-mono);
+  background: var(--sw-bg-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--sw-fg-1);
+}
+/* Always-visible legacy-prefix toggle inside the cluster card. */
+.naming-prefix-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 0;
+  flex-wrap: wrap;
+}
+.naming-prefix-row .comp-toggle { flex: 0 0 auto; }
+.naming-prefix-hint {
+  font-size: 11px;
+  color: var(--sw-fg-3);
+}
+.naming-prefix-hint code {
+  font-family: var(--sw-mono);
+  background: var(--sw-bg-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--sw-fg-1);
+}
+/* Service-naming rule editor — pattern + capture mapping + live test. */
+.naming-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.naming-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.naming-row .mf {
+  flex: 1 1 160px;
+}
+.naming-test {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sw-line);
+}
+.naming-result {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--sw-bg-2);
+  border: 1px solid var(--sw-line-2);
+  font-size: 11.5px;
+  flex: 1 1 280px;
+}
+.naming-result.ok { border-color: var(--sw-accent-line); }
+.naming-result.err { border-color: var(--sw-err); background: rgba(239, 68, 68, 0.06); }
+.naming-result-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.naming-tag {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sw-fg-3);
+  background: var(--sw-bg-1);
+  border: 1px solid var(--sw-line);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.naming-result .mono { font-family: var(--sw-mono); color: var(--sw-fg-0); font-weight: 600; }
+.naming-result .mono.accent { color: var(--sw-accent-2); }
+.naming-error {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--sw-err);
 }
 .comp-toggle input {
   accent-color: var(--sw-accent);

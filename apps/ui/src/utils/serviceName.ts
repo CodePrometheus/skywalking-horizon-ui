@@ -18,26 +18,31 @@
 import type { ServiceNamingRule } from '@skywalking-horizon-ui/api-client';
 
 /**
- * Service-name parsing. Two flavours coexist:
+ * Two name conventions co-exist:
  *
- *   - Legacy `<group>::<base>` (OAP's historical encoding for fleet /
- *     deployment prefix) — used by general-purpose layers like
- *     `agent::songs`.
- *   - Per-layer `ServiceNamingRule` (named-capture regex) — used by
- *     k8s / mesh / cilium layers where the encoded grouping dimension
- *     is the namespace (`songs.sample` → `songs` + namespace `sample`).
+ *   - **OAP `<group>::<base>` prefix** (layer-agnostic, historical).
+ *     Example: `agent::checkout`, `mesh-svr::reviews`. The `<group>`
+ *     part is operationally meaningful (fleet / agent class) but the
+ *     `::` syntax bleeds badly into UI labels — by default we always
+ *     strip it from the display label and expose it separately on
+ *     `legacyGroup`. The node detail panel can opt-in to surfacing it
+ *     as a chip via `TopologyConfig.showGroup`.
  *
- * Rendering rule applied across the UI:
- *   - Service lists / pickers / KPI strips → render `<alias-chip> <display>`
- *     so the grouping reads as a category tag and the eye lands on the
- *     service label.
- *   - Topology nodes → render `display` only; alias-chip lives in
- *     the right-sidebar detail panel and the group bounding box title.
+ *   - **Per-layer topology-cluster rule** (k8s / mesh / cilium). A
+ *     named-capture regex (see `ServiceNamingRule`) splits the name
+ *     into `display` + `cluster` (e.g. namespace). When the rule
+ *     matches, its captures win.
  *
- * The two parsers are intentionally separate: legacy `::` is layer-
- * agnostic and always available; the rule-based parser only fires
- * when a layer config carries an explicit `naming` rule.
+ * Both conventions can apply to one name. Real mesh services look
+ * like `mesh-svr::reviews.default` — the cluster rule extracts
+ * `service=mesh-svr::reviews`, `namespace=default`, and we then strip
+ * `mesh-svr::` from the captured service to leave `display=reviews`
+ * + `legacyGroup=mesh-svr` + `cluster=default`.
+ *
+ * The resolver is the single read-side helper: every UI display site
+ * goes through it so chips, labels, and groupings stay consistent.
  */
+
 export interface ParsedServiceName {
   /** Group prefix when the raw name contains `::`. */
   group: string | null;
@@ -67,40 +72,29 @@ export function serviceGroupName(raw: string | null | undefined): string | null 
 }
 
 /**
- * Per-layer identity resolution. Given a service name and the layer's
- * `ServiceNamingRule` (if any), returns the trio every UI surface
- * needs:
+ * Layer-aware identity for a service name.
  *
- *   - `display`  the label shown next to the node / on the chip / in
- *                lists. Always non-empty (falls back to the raw name).
- *   - `group`    the value used for clustering (e.g. namespace name).
- *                `null` when no grouping applies — UI hides the chip.
- *   - `alias`    human label for the dimension (e.g. `namespace`,
- *                `group`). `null` when `group` is null; otherwise
- *                non-empty. Surfaced as the chip prefix (`namespace ·
- *                sample`) and the group-box title.
+ * `display` is **always** the pure service label — no `<group>::`
+ * prefix, no `.<namespace>` suffix when the cluster rule consumed
+ * one. Topology nodes and chip labels read this verbatim.
  *
- * Resolution order:
- *   1. If `rule` is non-null and its regex matches, use the captured
- *      groups + rule.alias.
- *   2. Else if the name contains `::`, treat it as legacy group/base
- *      with alias `group`.
- *   3. Else: display=raw, group=null, alias=null.
+ * `cluster` + `clusterAlias` come from a matching topology-cluster
+ * rule (k8s namespace, mesh namespace, …). Both are `null` when no
+ * rule was supplied or the regex didn't match.
+ *
+ * `legacyGroup` is OAP's historical `<group>::` prefix on the raw
+ * name (or on the captured display, in case both conventions stack).
+ * The node detail panel surfaces it as a separate chip only when
+ * `TopologyConfig.showGroup` is true; everywhere else (topology
+ * label, focus picker, lists) ignores it.
  */
 export interface ServiceIdentity {
   display: string;
-  group: string | null;
-  alias: string | null;
+  cluster: string | null;
+  clusterAlias: string | null;
+  legacyGroup: string | null;
 }
 
-/**
- * Compile a `ServiceNamingRule` into a memoisable RegExp.
- *
- * Returns `null` when the pattern is invalid — callers fall through to
- * the legacy `::` parser. Pattern compilation errors are swallowed by
- * design; mis-typed regexes in operator-edited config should never
- * crash the topology view, just behave as if no rule was configured.
- */
 function compileRule(rule: ServiceNamingRule | null | undefined): RegExp | null {
   if (!rule || !rule.pattern) return null;
   try {
@@ -115,32 +109,57 @@ export function resolveServiceIdentity(
   rule: ServiceNamingRule | null | undefined,
 ): ServiceIdentity {
   const r = raw ?? '';
-  // Rule-based parse first — layer config wins when present and the
-  // pattern actually matches the name.
+  // Always extract the legacy `::` group up-front. It can apply both
+  // to names that don't match the cluster rule (`agent::checkout`)
+  // and to names that DO match it (`mesh-svr::reviews.default` — the
+  // cluster rule captures `mesh-svr::reviews` as the service, and we
+  // then split off `mesh-svr` here).
+  let legacyGroup: string | null = null;
+  let workingName = r;
+
+  // Cluster rule first.
   const re = compileRule(rule);
   if (re && rule) {
     const m = r.match(re);
     if (m && m.groups) {
       const displayKey = rule.displayGroup ?? 'service';
       const valueKey = rule.valueGroup ?? 'group';
-      const display = m.groups[displayKey];
-      const group = m.groups[valueKey];
-      // Only honour the rule when BOTH expected captures resolved to
-      // non-empty strings. Partial matches (e.g. one capture missing)
-      // fall through to the legacy parser so the operator's bad
-      // pattern doesn't strip half the data.
-      if (display && group) {
-        return { display, group, alias: rule.alias };
+      const captured = m.groups[displayKey];
+      const cluster = m.groups[valueKey];
+      if (captured && cluster) {
+        // Strip the `<group>::` prefix from the captured service so
+        // the display label is the pure base name.
+        const stripped = parseServiceName(captured);
+        return {
+          display: stripped.base,
+          cluster,
+          clusterAlias: rule.alias,
+          legacyGroup: stripped.group,
+        };
       }
-      if (display) {
-        return { display, group: null, alias: null };
+      if (captured) {
+        // Partial match — capture had display but not cluster.
+        const stripped = parseServiceName(captured);
+        return {
+          display: stripped.base,
+          cluster: null,
+          clusterAlias: null,
+          legacyGroup: stripped.group,
+        };
       }
     }
+    // Regex didn't match — fall through to the legacy parser.
   }
-  // Legacy `<group>::<base>` fallback.
-  const legacy = parseServiceName(r);
-  if (legacy.group) {
-    return { display: legacy.base, group: legacy.group, alias: 'group' };
-  }
-  return { display: r, group: null, alias: null };
+
+  // Legacy `<group>::<base>` fallback. By default we DON'T surface
+  // the prefix anywhere in the UI; just record it on `legacyGroup`
+  // so the (opt-in) node panel chip can pick it up.
+  const legacy = parseServiceName(workingName);
+  legacyGroup = legacy.group;
+  return {
+    display: legacy.base,
+    cluster: null,
+    clusterAlias: null,
+    legacyGroup,
+  };
 }

@@ -54,6 +54,10 @@ export interface LayerCaps {
   ebpfProfiling?: boolean;
   /** JVM async-profiler integration (Java-only). */
   asyncProfiling?: boolean;
+  /** eBPF network-profiling (process-level conversation topology + 4xx/5xx sampling). */
+  networkProfiling?: boolean;
+  /** Go pprof integration. */
+  pprofProfiling?: boolean;
   events?: boolean;
   /** Bundle a dedicated square tile per layer on the Overview strip,
    *  showing live service count. When on, regular tiles drop the
@@ -244,9 +248,14 @@ export interface LayerDef {
    *  agent-traced layers carry per-service logs. Drives the UI scope +
    *  the BFF query filter ride-along. */
   log?: LogConfig;
+  /** Traces-tab config — picks which trace backend (native vs Zipkin
+   *  vs both) the UI surfaces. Mesh / k8s layers ship Zipkin-format
+   *  spans (Envoy ALS, rover) so they set `source: 'zipkin'`; agent-
+   *  traced layers default to `native`. */
+  traces?: { source?: 'native' | 'zipkin' | 'both' };
   /** Per-layer service-name parsing rule. When present, the UI runs
-   *  every service name through this regex to derive `{ display, group }`
-   *  and clusters topology nodes by group. Absent ⇒ legacy `::` parser. */
+   *  every service name through this regex to derive `{ display, cluster }`
+   *  and clusters topology nodes by cluster. Absent ⇒ no clustering. */
   naming?: ServiceNamingRule;
 }
 

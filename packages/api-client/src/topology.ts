@@ -96,6 +96,13 @@ export interface TopologyConfig {
   linkServerMetrics?: TopologyMetricDef[];
   /** Per-edge MQE under `{ scope: ServiceRelation, ..., side: client }`. */
   linkClientMetrics?: TopologyMetricDef[];
+  /** Whether to expose OAP's `<group>::<base>` legacy prefix as a
+   *  separate chip in the node detail panel. When `true`, the panel
+   *  renders the prefix in its own chip (next to the cluster chip);
+   *  the topology node label still shows the pure service name.
+   *  When falsy (default), the prefix is dropped from the UI
+   *  entirely — base name everywhere. */
+  showGroup?: boolean;
 }
 
 /** Operator-editable endpoint-dependency dashboard config. Lives in the
@@ -106,6 +113,9 @@ export interface EndpointDependencyConfig {
   /** Per-edge MQE under `{ scope: EndpointRelation }`. OAP exposes
    *  only a server-side family here so there's no client list. */
   linkMetrics?: TopologyMetricDef[];
+  /** See `TopologyConfig.showGroup` — same semantics for the
+   *  endpoint-dependency view's node panel. */
+  showGroup?: boolean;
 }
 
 export interface TopologyNode {

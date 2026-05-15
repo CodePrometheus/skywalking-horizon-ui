@@ -233,6 +233,7 @@ const cfg = computed(() => data.value?.config ?? {
   nodeMetrics: [] as TopologyMetricDef[],
   linkMetrics: [] as TopologyMetricDef[],
 });
+const showLegacyGroup = computed<boolean>(() => Boolean(cfg.value?.showGroup));
 function pickByRole(defs: TopologyMetricDef[], role: TopologyMetricDef['role']): TopologyMetricDef | null {
   return defs.find((d) => d.role === role) ?? null;
 }
@@ -648,9 +649,13 @@ function edgeRowCrosshair(rowId: string): number | null {
         <span class="kicker">API dependency</span>
         <span v-if="serviceName" class="for-svc">
           on
-          <span v-if="identity(serviceName).group" class="sw-tag accent tiny inline-tag">
-            <span class="tag-alias">{{ identity(serviceName).alias }}</span>
-            <span class="tag-val">{{ identity(serviceName).group }}</span>
+          <span v-if="identity(serviceName).cluster" class="sw-tag accent tiny inline-tag">
+            <span class="tag-alias">{{ identity(serviceName).clusterAlias }}</span>
+            <span class="tag-val">{{ identity(serviceName).cluster }}</span>
+          </span>
+          <span v-if="showLegacyGroup && identity(serviceName).legacyGroup" class="sw-tag tiny inline-tag">
+            <span class="tag-alias">group</span>
+            <span class="tag-val">{{ identity(serviceName).legacyGroup }}</span>
           </span>
           <b>{{ identity(serviceName).display }}</b>
         </span>
@@ -1002,9 +1007,13 @@ function edgeRowCrosshair(rowId: string): number | null {
         <header class="ed-head">
           <div class="ed-id">
             <div class="ed-kind-row">
-              <span v-if="identity(selectedNode.serviceName).group" class="sw-tag accent tiny">
-                <span class="tag-alias">{{ identity(selectedNode.serviceName).alias }}</span>
-                <span class="tag-val">{{ identity(selectedNode.serviceName).group }}</span>
+              <span v-if="identity(selectedNode.serviceName).cluster" class="sw-tag accent tiny">
+                <span class="tag-alias">{{ identity(selectedNode.serviceName).clusterAlias }}</span>
+                <span class="tag-val">{{ identity(selectedNode.serviceName).cluster }}</span>
+              </span>
+              <span v-if="showLegacyGroup && identity(selectedNode.serviceName).legacyGroup" class="sw-tag tiny">
+                <span class="tag-alias">group</span>
+                <span class="tag-val">{{ identity(selectedNode.serviceName).legacyGroup }}</span>
               </span>
               <span class="ed-svc">{{ identity(selectedNode.serviceName).display }}</span>
               <span v-if="selectedNode.id === focusedId" class="sw-tag accent">focus</span>

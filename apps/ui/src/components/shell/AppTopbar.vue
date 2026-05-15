@@ -53,6 +53,8 @@ const SCOPE_LITERAL: Record<string, string> = {
   'trace-profiling': 'Trace Profiling',
   'ebpf-profiling': 'eBPF Profiling',
   'async-profiling': 'Async Profiling',
+  'network-profiling': 'Network Profiling',
+  pprof: 'pprof (Go)',
 };
 const crumbs = computed<string[]>(() => {
   const segs = route.path.split('/').filter(Boolean);

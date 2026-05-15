@@ -34,6 +34,9 @@ import { registerLogRoute } from './oap/log-routes.js';
 import { registerMenuRoute } from './oap/menu-routes.js';
 import { registerOapRoutes } from './oap/routes.js';
 import { registerPreflightRoutes } from './oap/preflight-routes.js';
+import { registerProfileRoutes } from './oap/profile-routes.js';
+import { registerEBPFRoutes } from './oap/ebpf-routes.js';
+import { registerAsyncProfileRoutes } from './oap/async-profile-routes.js';
 import { registerTopologyRoute } from './oap/topology-routes.js';
 import { registerTraceRoutes } from './oap/trace-routes.js';
 import { registerTraceTagRoutes } from './oap/trace-tag-routes.js';
@@ -89,6 +92,9 @@ registerDashboardRoute(app, { config: source, sessions });
 registerSetupRoutes(app, { config: source, sessions, audit, store: setupStore });
 registerOapRoutes(app, { config: source, sessions, audit });
 registerPreflightRoutes(app, { config: source, sessions });
+registerProfileRoutes(app, { config: source, sessions });
+registerEBPFRoutes(app, { config: source, sessions });
+registerAsyncProfileRoutes(app, { config: source, sessions });
 
 // Serve the built SPA out of the BFF when HORIZON_STATIC_DIR points at a
 // directory (Docker image layout: /app/static contains the Vite dist).

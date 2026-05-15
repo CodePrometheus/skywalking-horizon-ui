@@ -396,6 +396,22 @@ const sections: NavSection[] = [
                 >
                   <Icon name="prof" /><span>Async Profiling</span>
                 </RouterLink>
+                <RouterLink
+                  v-if="L.caps.networkProfiling"
+                  :to="`/layer/${L.key}/network-profiling`"
+                  class="sw-nav-item"
+                  :class="{ 'is-active': isActive(`/layer/${L.key}/network-profiling`) }"
+                >
+                  <Icon name="prof" /><span>Network Profiling</span>
+                </RouterLink>
+                <RouterLink
+                  v-if="L.caps.pprofProfiling"
+                  :to="`/layer/${L.key}/pprof`"
+                  class="sw-nav-item"
+                  :class="{ 'is-active': isActive(`/layer/${L.key}/pprof`) }"
+                >
+                  <Icon name="prof" /><span>pprof (Go)</span>
+                </RouterLink>
               </div>
             </template>
           </template>
@@ -508,6 +524,22 @@ const sections: NavSection[] = [
             :class="{ 'is-active': isActive(`/layer/${E.layer.key}/ebpf-profiling`) }"
           >
             <Icon name="flame" /><span>eBPF Profiling</span>
+          </RouterLink>
+          <RouterLink
+            v-if="E.layer.caps.networkProfiling"
+            :to="`/layer/${E.layer.key}/network-profiling`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${E.layer.key}/network-profiling`) }"
+          >
+            <Icon name="prof" /><span>Network Profiling</span>
+          </RouterLink>
+          <RouterLink
+            v-if="E.layer.caps.pprofProfiling"
+            :to="`/layer/${E.layer.key}/pprof`"
+            class="sw-nav-item"
+            :class="{ 'is-active': isActive(`/layer/${E.layer.key}/pprof`) }"
+          >
+            <Icon name="prof" /><span>pprof (Go)</span>
           </RouterLink>
           <RouterLink
             v-if="E.layer.caps.asyncProfiling"

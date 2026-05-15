@@ -251,6 +251,44 @@ export function registerZipkinRoutes(app: FastifyInstance, deps: ZipkinRouteDeps
     },
   );
 
+  // GET /api/zipkin/autocomplete/keys
+  // GET /api/zipkin/autocomplete/values?key=X
+  //
+  // Proxies for `/api/v2/autocompleteKeys` + `/api/v2/autocompleteValues`.
+  // OAP keeps a pre-configured set of "autocomplete keys" (operator
+  // adds to a config list) and indexes their distinct values from
+  // recent Zipkin spans. The Zipkin trace UI uses these to power
+  // typeahead on the `annotationQuery` field — same UX Zipkin Lens
+  // ships, but routed through Horizon so the basic-auth handshake +
+  // CORS stay invisible to the SPA.
+  app.get('/api/zipkin/autocomplete/keys', { preHandler: auth }, async (_req, reply) => {
+    try {
+      const { status, body } = await zipkinFetch(
+        deps.config.current,
+        deps.fetch,
+        '/api/v2/autocompleteKeys',
+      );
+      return reply.code(status).send(body);
+    } catch (err) {
+      return reply.code(200).send({ keys: [], reachable: false, error: String(err) });
+    }
+  });
+  app.get('/api/zipkin/autocomplete/values', { preHandler: auth }, async (req, reply) => {
+    const q = req.query as { key?: string };
+    if (!q.key) return reply.code(400).send({ error: 'missing_key' });
+    try {
+      const { status, body } = await zipkinFetch(
+        deps.config.current,
+        deps.fetch,
+        '/api/v2/autocompleteValues',
+        { key: q.key },
+      );
+      return reply.code(status).send(body);
+    } catch (err) {
+      return reply.code(200).send({ values: [], reachable: false, error: String(err) });
+    }
+  });
+
   // GET /api/zipkin/traceMany?traceIds=t1,t2,t3
   app.get('/api/zipkin/traceMany', { preHandler: auth }, async (req: FastifyRequest, reply: FastifyReply) => {
     const q = req.query as { traceIds?: string };

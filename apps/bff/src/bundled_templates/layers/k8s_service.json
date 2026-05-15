@@ -1,6 +1,6 @@
 {
   "key": "K8S_SERVICE",
-  "alias": "K8s Service",
+  "alias": "Kubernetes Services",
   "group": "Kubernetes",
   "color": "var(--sw-purple)",
   "documentLink": "https://skywalking.apache.org/docs/main/next/en/setup/backend/backend-k8s-network-monitoring/",

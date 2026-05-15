@@ -77,6 +77,8 @@ const SCOPE_CAP_PREDICATE: Record<string, (L: LayerDef) => boolean> = {
   'trace-profiling': (L) => Boolean(L.caps?.traceProfiling),
   'ebpf-profiling': (L) => Boolean(L.caps?.ebpfProfiling),
   'async-profiling': (L) => Boolean(L.caps?.asyncProfiling),
+  'network-profiling': (L) => Boolean(L.caps?.networkProfiling),
+  pprof: (L) => Boolean(L.caps?.pprofProfiling),
 };
 watch(
   [() => route.path, layer],

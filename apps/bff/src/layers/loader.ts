@@ -61,6 +61,10 @@ export interface LayerComponentFlags {
   ebpfProfiling?: boolean;
   /** JVM async-profiler integration. */
   asyncProfiling?: boolean;
+  /** eBPF network profiling (process-level conversation graph). */
+  networkProfiling?: boolean;
+  /** Go pprof integration. */
+  pprofProfiling?: boolean;
 }
 
 export interface LayerSlotsConfig {
@@ -214,8 +218,8 @@ export interface LayerTemplate {
    *  filtered by `logger=` or `source=`. */
   log?: LogConfig;
   /** Service-name parsing rule. Surfaced verbatim on the menu response
-   *  so the UI can derive `{ display, group }` per service and cluster
-   *  topology nodes by group. */
+   *  so the UI can derive `{ display, cluster }` per service and
+   *  cluster topology nodes accordingly. */
   naming?: ServiceNamingRule;
 }
 

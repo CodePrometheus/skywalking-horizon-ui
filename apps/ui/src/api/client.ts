@@ -28,6 +28,33 @@ import type {
   LogsResponse,
   MenuResponse,
   OapInfo,
+  ProfileAnalyzationResponse,
+  ProfileAnalyzeQuery,
+  ProfileSegmentsResponse,
+  ProfileTaskCreationRequest,
+  ProfileTaskCreationResponse,
+  ProfileTaskListResponse,
+  ProfileTaskLogsResponse,
+  EBPFTaskListResponse,
+  EBPFTaskCreationRequest,
+  EBPFTaskCreationResponse,
+  EBPFSchedulesResponse,
+  EBPFAnalyzeRequest,
+  EBPFAnalyzeResponse,
+  ProcessTopologyResponse,
+  NetworkProfilingCreateRequest,
+  NetworkProfilingCreateResponse,
+  NetworkProfilingKeepAliveResponse,
+  AsyncProfilingTaskListResponse,
+  AsyncProfilingTaskCreationRequest,
+  AsyncProfilingTaskCreationResponse,
+  AsyncProfilingProgressResponse,
+  AsyncProfilingAnalyzeResponse,
+  PprofTaskListResponse,
+  PprofTaskCreationRequest,
+  PprofTaskCreationResponse,
+  PprofProgressResponse,
+  PprofAnalyzeResponse,
   SetupResponse,
   SetupSavePayload,
   TopologyConfig,
@@ -114,6 +141,67 @@ export type {
   LogQueryRequest,
   LogsResponse,
   LogFacetsResponse,
+  ProfileTask,
+  ProfileTaskLog,
+  ProfileTaskListResponse,
+  ProfileTaskLogsResponse,
+  ProfileSpan,
+  ProfileSpanRef,
+  ProfileSpanTag,
+  ProfileSpanLog,
+  ProfileSpanLogData,
+  ProfileSegment,
+  ProfileSegmentsResponse,
+  ProfileAnalyzationElement,
+  ProfileAnalyzationTree,
+  ProfileAnalyzationResponse,
+  ProfileTimeRange,
+  ProfileAnalyzeQuery,
+  ProfileTaskCreationRequest,
+  ProfileTaskCreationResponse,
+  EBPFTargetType,
+  EBPFTriggerType,
+  EBPFAggregateType,
+  EBPFTask,
+  EBPFProcess,
+  EBPFSchedule,
+  EBPFStackElement,
+  EBPFAnalysisTree,
+  EBPFTaskCreationRequest,
+  EBPFTaskCreationResult,
+  EBPFTaskListResponse,
+  EBPFSchedulesResponse,
+  EBPFAnalyzeRequest,
+  EBPFAnalyzeResponse,
+  EBPFTaskCreationResponse,
+  ProcessNode,
+  ProcessCall,
+  ProcessTopologyResponse,
+  NetworkProfilingSampling,
+  NetworkProfilingCreateRequest,
+  NetworkProfilingCreateResponse,
+  NetworkProfilingKeepAliveResponse,
+  AsyncProfilingEvent,
+  AsyncJFREventType,
+  AsyncProfilingTask,
+  AsyncProfilingProgressLog,
+  AsyncProfilingProgress,
+  AsyncProfilingStackElement,
+  AsyncProfilingTree,
+  AsyncProfilingTaskCreationRequest,
+  AsyncProfilingTaskListResponse,
+  AsyncProfilingProgressResponse,
+  AsyncProfilingAnalyzeResponse,
+  AsyncProfilingTaskCreationResponse,
+  PprofTask,
+  PprofProgress,
+  PprofStackElement,
+  PprofTree,
+  PprofTaskCreationRequest,
+  PprofTaskListResponse,
+  PprofProgressResponse,
+  PprofAnalyzeResponse,
+  PprofTaskCreationResponse,
 } from '@skywalking-horizon-ui/api-client';
 
 
@@ -168,6 +256,15 @@ export interface AdminLayerTemplate {
   endpointDependency?: EndpointDependencyConfig;
   /** Per-layer trace source default. */
   traces?: TracesConfig;
+  /** Service-name parsing rule for the topology cluster feature.
+   *  See `ServiceNamingRule` in @skywalking-horizon-ui/api-client. */
+  naming?: {
+    pattern: string;
+    flags?: string;
+    displayGroup?: string;
+    valueGroup?: string;
+    alias: string;
+  };
 }
 
 export class BffApiError extends Error {
@@ -488,6 +585,19 @@ export class BffClient {
   zipkinTrace(traceId: string): Promise<ZipkinTraceDetailResponse> {
     return this.request<ZipkinTraceDetailResponse>('GET', `/api/zipkin/trace/${encodeURIComponent(traceId)}`);
   }
+  /** Zipkin annotation autocomplete — keys configured on the OAP
+   *  side (`/api/v2/autocompleteKeys`). */
+  zipkinAutocompleteKeys(): Promise<string[]> {
+    return this.request<string[]>('GET', '/api/zipkin/autocomplete/keys');
+  }
+  /** Zipkin annotation autocomplete — values for one key
+   *  (`/api/v2/autocompleteValues?key=...`). */
+  zipkinAutocompleteValues(key: string): Promise<string[]> {
+    return this.request<string[]>(
+      'GET',
+      `/api/zipkin/autocomplete/values?key=${encodeURIComponent(key)}`,
+    );
+  }
 
   /** List active instances for a service. The per-layer Instance
    *  dashboard surfaces a second selector below the service picker;
@@ -529,6 +639,185 @@ export class BffClient {
       'GET',
       '/api/admin/layer-templates',
     );
+  }
+
+  // ── trace (agent) profiling ──────────────────────────────────────────
+  /** List profile tasks for a service (+ optional endpoint filter). */
+  layerProfileTasks(
+    layerKey: string,
+    service: string,
+    endpoint = '',
+  ): Promise<ProfileTaskListResponse> {
+    const qs = new URLSearchParams({ service });
+    if (endpoint) qs.set('endpoint', endpoint);
+    return this.request<ProfileTaskListResponse>(
+      'GET',
+      `/api/layer/${encodeURIComponent(layerKey)}/profile/tasks?${qs.toString()}`,
+    );
+  }
+
+  /** Create a profile task on the target service / endpoint. */
+  createProfileTask(
+    layerKey: string,
+    body: ProfileTaskCreationRequest,
+  ): Promise<ProfileTaskCreationResponse> {
+    return this.request<ProfileTaskCreationResponse>(
+      'POST',
+      `/api/layer/${encodeURIComponent(layerKey)}/profile/tasks`,
+      body,
+    );
+  }
+
+  /** Sampled trace segments captured by a profile task. */
+  profileTaskSegments(taskId: string): Promise<ProfileSegmentsResponse> {
+    return this.request<ProfileSegmentsResponse>(
+      'GET',
+      `/api/profile/tasks/${encodeURIComponent(taskId)}/segments`,
+    );
+  }
+
+  /** Per-instance operation log for a profile task (start / stop events). */
+  profileTaskLogs(taskId: string): Promise<ProfileTaskLogsResponse> {
+    return this.request<ProfileTaskLogsResponse>(
+      'GET',
+      `/api/profile/tasks/${encodeURIComponent(taskId)}/logs`,
+    );
+  }
+
+  /** Resolve profile data for one or more span time-ranges into call trees. */
+  profileAnalyze(queries: ProfileAnalyzeQuery[]): Promise<ProfileAnalyzationResponse> {
+    return this.request<ProfileAnalyzationResponse>('POST', '/api/profile/analyze', { queries });
+  }
+
+  // ── eBPF profiling (ON_CPU / OFF_CPU, fixed-time) ───────────────────
+  /** List eBPF profile tasks + the `couldProfiling` / process-label
+   *  metadata used by the New Task form. */
+  layerEBPFTasks(layerKey: string, service: string): Promise<EBPFTaskListResponse> {
+    const qs = new URLSearchParams({ service });
+    return this.request<EBPFTaskListResponse>(
+      'GET',
+      `/api/layer/${encodeURIComponent(layerKey)}/ebpf/tasks?${qs.toString()}`,
+    );
+  }
+  /** Create an eBPF fixed-time task. */
+  createEBPFTask(
+    layerKey: string,
+    body: EBPFTaskCreationRequest,
+  ): Promise<EBPFTaskCreationResponse> {
+    return this.request<EBPFTaskCreationResponse>(
+      'POST',
+      `/api/layer/${encodeURIComponent(layerKey)}/ebpf/tasks`,
+      body,
+    );
+  }
+  /** Per-task schedules — one entry per (process, time-slice) captured
+   *  by the task. */
+  ebpfTaskSchedules(taskId: string): Promise<EBPFSchedulesResponse> {
+    return this.request<EBPFSchedulesResponse>(
+      'GET',
+      `/api/ebpf/tasks/${encodeURIComponent(taskId)}/schedules`,
+    );
+  }
+  /** Roll a set of schedules into stack-trees keyed by `aggregateType`
+   *  (COUNT / DURATION). */
+  ebpfAnalyze(body: EBPFAnalyzeRequest): Promise<EBPFAnalyzeResponse> {
+    return this.request<EBPFAnalyzeResponse>('POST', '/api/ebpf/analyze', body);
+  }
+
+  // ── eBPF network profiling ───────────────────────────────────────────
+  /** List NETWORK / CONTINUOUS_PROFILING eBPF tasks for a service or
+   *  service-instance. */
+  layerNetworkTasks(
+    layerKey: string,
+    args: { service?: string; serviceInstance?: string },
+  ): Promise<EBPFTaskListResponse> {
+    const qs = new URLSearchParams();
+    if (args.service) qs.set('service', args.service);
+    if (args.serviceInstance) qs.set('serviceInstance', args.serviceInstance);
+    return this.request<EBPFTaskListResponse>(
+      'GET',
+      `/api/layer/${encodeURIComponent(layerKey)}/ebpf/network/tasks?${qs.toString()}`,
+    );
+  }
+  /** Process-level topology centred on a service-instance — the network
+   *  profiling view's main visualization. */
+  ebpfNetworkTopology(serviceInstance: string, windowMinutes = 30): Promise<ProcessTopologyResponse> {
+    const qs = new URLSearchParams({ serviceInstance, windowMinutes: String(windowMinutes) });
+    return this.request<ProcessTopologyResponse>('GET', `/api/ebpf/network/topology?${qs.toString()}`);
+  }
+  /** Create an eBPF network-profile task bound to an instance + sampling
+   *  rules (4xx / 5xx / min-duration / URI regex). */
+  createNetworkProfilingTask(body: NetworkProfilingCreateRequest): Promise<NetworkProfilingCreateResponse> {
+    return this.request<NetworkProfilingCreateResponse>('POST', '/api/ebpf/network/tasks', body);
+  }
+  /** Heartbeat a continuous-profiling task so OAP keeps capturing. */
+  keepAliveNetworkProfilingTask(taskId: string): Promise<NetworkProfilingKeepAliveResponse> {
+    return this.request<NetworkProfilingKeepAliveResponse>(
+      'POST',
+      `/api/ebpf/network/tasks/${encodeURIComponent(taskId)}/keep-alive`,
+    );
+  }
+
+  // ── Async profiler (Java) ─────────────────────────────────────────
+  layerAsyncTasks(layerKey: string, service: string): Promise<AsyncProfilingTaskListResponse> {
+    return this.request<AsyncProfilingTaskListResponse>(
+      'GET',
+      `/api/layer/${encodeURIComponent(layerKey)}/async/tasks?service=${encodeURIComponent(service)}`,
+    );
+  }
+  createAsyncProfilingTask(
+    layerKey: string,
+    body: AsyncProfilingTaskCreationRequest,
+  ): Promise<AsyncProfilingTaskCreationResponse> {
+    return this.request<AsyncProfilingTaskCreationResponse>(
+      'POST',
+      `/api/layer/${encodeURIComponent(layerKey)}/async/tasks`,
+      body,
+    );
+  }
+  asyncTaskProgress(taskId: string): Promise<AsyncProfilingProgressResponse> {
+    return this.request<AsyncProfilingProgressResponse>(
+      'GET',
+      `/api/async/tasks/${encodeURIComponent(taskId)}/progress`,
+    );
+  }
+  asyncAnalyze(body: {
+    taskId: string;
+    instanceIds: string[];
+    eventType: string;
+  }): Promise<AsyncProfilingAnalyzeResponse> {
+    return this.request<AsyncProfilingAnalyzeResponse>('POST', '/api/async/analyze', body);
+  }
+
+  // ── pprof (Go) ────────────────────────────────────────────────────
+  layerPprofTasks(layerKey: string, service: string): Promise<PprofTaskListResponse> {
+    return this.request<PprofTaskListResponse>(
+      'GET',
+      `/api/layer/${encodeURIComponent(layerKey)}/pprof/tasks?service=${encodeURIComponent(service)}`,
+    );
+  }
+  createPprofTask(
+    layerKey: string,
+    body: PprofTaskCreationRequest,
+  ): Promise<PprofTaskCreationResponse> {
+    return this.request<PprofTaskCreationResponse>(
+      'POST',
+      `/api/layer/${encodeURIComponent(layerKey)}/pprof/tasks`,
+      body,
+    );
+  }
+  pprofTaskProgress(taskId: string): Promise<PprofProgressResponse> {
+    return this.request<PprofProgressResponse>(
+      'GET',
+      `/api/pprof/tasks/${encodeURIComponent(taskId)}/progress`,
+    );
+  }
+  pprofAnalyze(body: {
+    taskId: string;
+    instanceIds: string[];
+    eventType: string;
+  }): Promise<PprofAnalyzeResponse> {
+    return this.request<PprofAnalyzeResponse>('POST', '/api/pprof/analyze', body);
   }
 
   // ── cluster / preflight ──────────────────────────────────────────────

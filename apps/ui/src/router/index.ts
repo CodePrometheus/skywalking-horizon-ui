@@ -59,11 +59,21 @@ function layerRoute(): RouteRecordRaw {
         meta: { ownsServiceSelector: true },
       },
       { path: 'dependency', component: () => import('@/views/layer/LayerEndpointDependencyView.vue') },
-      { path: 'trace', component: () => import('@/views/layer/LayerTracesView.vue') },
+      // `LayerTracesEntry` is a runtime dispatcher: it inspects the
+      // layer template's `traces.source` and renders either the native
+      // trace view or the Zipkin one. Mesh / k8s layers land on Zipkin.
+      // `ownsServiceSelector` hides the shell's SkyWalking service
+      // picker — the trace tabs (both native + Zipkin) carry their
+      // own service input, and Zipkin's service universe is decoupled
+      // from SkyWalking's anyway (different name index, no `normal`
+      // flag, queried via `/api/v2/services`).
+      { path: 'trace', component: () => import('@/views/layer/LayerTracesEntry.vue'), meta: { ownsServiceSelector: true } },
       { path: 'logs', component: () => import('@/views/layer/LayerLogsView.vue') },
-      { path: 'trace-profiling', component: () => import('@/views/layer/LayerDashboardsView.vue') },
-      { path: 'ebpf-profiling', component: () => import('@/views/layer/LayerDashboardsView.vue') },
-      { path: 'async-profiling', component: () => import('@/views/layer/LayerDashboardsView.vue') },
+      { path: 'trace-profiling', component: () => import('@/views/layer/LayerTraceProfilingView.vue') },
+      { path: 'ebpf-profiling', component: () => import('@/views/layer/LayerEBPFProfilingView.vue') },
+      { path: 'async-profiling', component: () => import('@/views/layer/LayerAsyncProfilingView.vue') },
+      { path: 'network-profiling', component: () => import('@/views/layer/LayerNetworkProfilingView.vue') },
+      { path: 'pprof', component: () => import('@/views/layer/LayerPprofProfilingView.vue') },
       // Old single-profiling URL → redirect to the trace-profiling page
       // for back-compat with bookmarks taken before the split.
       {

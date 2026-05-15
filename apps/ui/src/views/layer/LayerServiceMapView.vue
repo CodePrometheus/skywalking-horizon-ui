@@ -85,11 +85,11 @@ const safeLayer = computed<LayerDef>(() => layer.value ?? {
   key: layerKey.value, name: layerKey.value, color: 'var(--sw-fg-2)',
   serviceCount: -1, active: false, level: null, slots: {}, caps: {},
 });
-// Per-layer service-name parsing rule (k8s/mesh ⇒ namespace, generic ⇒
-// legacy `::`). `identity()` is the single read-side helper: every
-// display site goes through it so the chip alias + group value stay
-// consistent across the focus picker, node label, detail panels, and
-// the group bounding box.
+// Per-layer topology-cluster rule (k8s/mesh ⇒ namespace) + label
+// policy for OAP's `<group>::<base>` prefix. `identity()` is the
+// single read-side helper: every display site goes through it so the
+// chip alias + group value stay consistent across the focus picker,
+// node label, detail panels, and the cluster bounding box.
 const namingRule = computed(() => layer.value?.naming ?? null);
 function identity(name: string | null | undefined): ServiceIdentity {
   return resolveServiceIdentity(name, namingRule.value);
@@ -134,9 +134,9 @@ const groupedRows = computed<Map<string, GroupedRow[]>>(() => {
   for (const r of landingRows.value) {
     const id = identity(r.serviceName);
     if (term && !r.serviceName.toLowerCase().includes(term)) continue;
-    const key = id.group ?? '';
+    const key = id.cluster ?? '';
     if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push({ group: id.group, name: id.display, id: r.serviceId, raw: r.serviceName });
+    map.get(key)!.push({ group: id.cluster, name: id.display, id: r.serviceId, raw: r.serviceName });
   }
   return map;
 });
@@ -185,6 +185,11 @@ const cfg = computed(() => data.value?.config ?? {
   linkServerMetrics: [] as TopologyMetricDef[],
   linkClientMetrics: [] as TopologyMetricDef[],
 });
+// Per-topology-config flag: render the legacy `<group>::` prefix as a
+// SEPARATE chip in the node detail panel. Default off — by default
+// the prefix never appears in the UI; opting in surfaces it in the
+// panel only (topology node labels stay clean either way).
+const showLegacyGroup = computed<boolean>(() => Boolean(cfg.value?.showGroup));
 function pickByRole(defs: TopologyMetricDef[], role: TopologyMetricDef['role']): TopologyMetricDef | null {
   return defs.find((d) => d.role === role) ?? null;
 }
@@ -218,6 +223,89 @@ function mergeThresholdOverride(def: TopologyMetricDef, scope: 'topology' | 'dep
 const ringDef = computed(() => {
   const def = pickByRole(cfg.value.nodeMetrics, 'ring');
   return def ? mergeThresholdOverride(def, 'topology') : null;
+});
+
+/**
+ * Legend rendering for the ring colour band.
+ *
+ * Earlier the legend hard-coded `0% / 0.1% / 1% / 5%+` — that's
+ * accurate for an error-rate ring (lower = healthier ⇒ left=green) but
+ * wildly wrong for SLA / Apdex / Success Rate, which are inverted
+ * (higher = healthier). On a layer with `service_sla/100` the
+ * renderer correctly inverts via `invertHealth`, but the legend was
+ * still claiming `0% / 0.1% / 1% / 5%+` next to a green→red ramp that
+ * actually pivots at 100% / 99.9% / 99% / 95%.
+ *
+ * `ringScaleLabels` derives the four break-point labels from the
+ * metric's own thresholds, transforming them back into user-space
+ * when the metric is inverted. The order stays green→red (left→right)
+ * so the ramp visual reads the same; only the numbers change.
+ *
+ * `ringDirectionHint` adds a small "higher = better" / "lower = better"
+ * tag so the operator can sanity-check the colour mapping at a glance.
+ */
+const ringScaleLabels = computed<string[]>(() => {
+  const def = ringDef.value;
+  if (!def) return [];
+  const t = def.thresholds ?? { ok: 0.1, warn: 1, danger: 5 };
+  // When thresholds don't carry an explicit `invertHealth`, fall back
+  // to the legacy id/label heuristic that `ringColor()` already uses
+  // for SLA / Apdex / Success-Rate metrics. Without this, an
+  // unmigrated `sla` template would render a green-at-100% ramp but
+  // print `0% / 0.1% / 1% / 5%+` labels next to it.
+  const heuristicInvert =
+    /sla|success|apdex/i.test(def.id) || /sla|apdex|success/i.test(def.label);
+  const invert = t.invertHealth === undefined ? heuristicInvert : Boolean(t.invertHealth);
+  const base = t.invertBase ?? 100;
+  const ok = t.ok ?? 0.1;
+  const warn = t.warn ?? 1;
+  const danger = t.danger ?? 5;
+  // Respect the metric's own unit verbatim — most ring metrics carry
+  // `%`, but Apdex is unitless on 0-1 and a custom layer may use a
+  // raw count. Defaulting to `%` here would print a misleading suffix.
+  const unit = def.unit ?? '';
+  // The colour ramp is rendered green → yellow → warn → red, four
+  // bands. The three breakpoints sit at the band edges. For a
+  // non-inverted metric (error-rate style), the breakpoints already
+  // describe value boundaries left→right (low→high).
+  //
+  // For an inverted metric (SLA-style), the colour ramp's left edge
+  // corresponds to value=base (healthiest), and each subsequent
+  // boundary is `base - threshold`. The numbers naturally come out
+  // descending, which is the user-facing reading direction.
+  const breaks = invert
+    ? [base, base - ok, base - warn, base - danger]
+    : [0, ok, warn, danger];
+  const fmt = (n: number): string => {
+    // Drop trailing zeros, but keep up to 2 decimal places for sub-1
+    // values. `99.9` and `100` both look cleaner than `99.90` / `100.00`.
+    const s = Number.isInteger(n) ? n.toString() : n.toFixed(2).replace(/\.?0+$/, '');
+    return `${s}${unit ?? ''}`;
+  };
+  const out = breaks.map(fmt);
+  // Decorate the END label with a trailing `+` / `-` so the reader
+  // knows that band is "values past this boundary":
+  //   - non-invert (left=low good): the LAST band continues to `+∞`,
+  //     so suffix with `+`.
+  //   - invert (left=high good):   the LAST band continues to `-∞`
+  //     (or 0), so suffix with `-`.
+  if (out.length > 0) {
+    out[out.length - 1] = out[out.length - 1] + (invert ? '-' : '+');
+  }
+  return out;
+});
+const ringDirectionHint = computed<string>(() => {
+  const def = ringDef.value;
+  if (!def) return '';
+  const t = def.thresholds;
+  if (t?.invertHealth) return 'higher = better';
+  // Without an explicit `invertHealth`, fall back to the legacy
+  // heuristic on the metric id/label so SLA-style metrics that
+  // haven't migrated to thresholds still read correctly.
+  if (/sla|success|apdex/i.test(def.id) || /sla|apdex|success/i.test(def.label)) {
+    return 'higher = better';
+  }
+  return 'lower = better';
 });
 const centerDef = computed(() => pickByRole(cfg.value.nodeMetrics, 'center'));
 const secondaryDef = computed(() => pickByRole(cfg.value.nodeMetrics, 'secondary'));
@@ -395,20 +483,20 @@ function computeBoosterLevels(
   }
   return merged;
 }
-// Sentinel encoding for the group key — `null` (ungrouped) gets pinned
-// to a stable string so it can serve as a Map key alongside named
-// groups. Decoded back on the read side.
-const UNGROUPED = ' __ungrouped__';
-function gkeyEnc(k: string | null): string { return k ?? UNGROUPED; }
-function gkeyDec(s: string): string | null { return s === UNGROUPED ? null : s; }
+// Sentinel encoding for the cluster key — `null` (unclustered) gets
+// pinned to a stable string so it can serve as a Map key alongside
+// real cluster values. Decoded back on the read side.
+const UNCLUSTERED = ' __ungrouped__';
+function ckeyEnc(k: string | null): string { return k ?? UNCLUSTERED; }
+function ckeyDec(s: string): string | null { return s === UNCLUSTERED ? null : s; }
 
 /**
- * One namespace / group bucket inside the topology canvas. Each bucket
- * runs its own internal BFS column layout (mirroring the legacy single-
- * graph layout) and is positioned into a row of bucket regions whose
- * order is decided by an inter-group BFS over the cross-bucket calls.
+ * One topology-cluster bucket. Each bucket runs its own internal BFS
+ * column layout (mirroring the legacy single-graph layout) and is
+ * positioned into a row of bucket regions whose order is decided by
+ * an inter-cluster BFS over cross-cluster calls.
  */
-interface GroupBucket {
+interface ClusterBucket {
   key: string | null;
   alias: string | null;
   nodes: LayoutNode[];        // intra-bucket BFS-ordered nodes with `layerIdx`
@@ -425,24 +513,24 @@ const GROUP_PAD_BOTTOM = 28;
 const GROUP_GAP_X = 80;
 
 /**
- * Two-level layout: bucket by the layer-resolved group, BFS each
- * bucket internally, then BFS the inter-bucket call graph to decide
- * the bucket order along the X axis. Returns the buckets in render
- * order with each bucket's rect already positioned.
+ * Two-level layout: bucket by the layer-resolved topology cluster,
+ * BFS each bucket internally, then BFS the inter-cluster call graph
+ * to decide bucket order along the X axis. Returns the buckets in
+ * render order with each bucket's anchor rect already positioned.
  *
- * Ungrouped nodes (no `naming` rule match, or synthetic User /
- * external nodes whose name has no group component) collapse into a
- * single "null-key" bucket that renders WITHOUT a bounding box — it
- * preserves the look of layers that don't configure a naming rule.
+ * Unclustered nodes (layer has no topology-cluster rule, or the rule
+ * didn't match — synthetic User, external endpoints, …) collapse
+ * into a single null-key bucket that renders WITHOUT a bounding box,
+ * preserving the look of layers that haven't opted in to clustering.
  */
-const groupBuckets = computed<GroupBucket[]>(() => {
+const clusterBuckets = computed<ClusterBucket[]>(() => {
   const all = nodes.value;
   if (all.length === 0) return [];
   // 1. Bucket nodes by resolved group key.
   const byGroup = new Map<string, TopologyNode[]>();
   for (const n of all) {
     const id = identity(n.name);
-    const k = gkeyEnc(id.group);
+    const k = ckeyEnc(id.cluster);
     if (!byGroup.has(k)) byGroup.set(k, []);
     byGroup.get(k)!.push(n);
   }
@@ -450,12 +538,12 @@ const groupBuckets = computed<GroupBucket[]>(() => {
   //    Each group becomes a meta-node; cross-group calls become meta-
   //    edges. `computeBoosterLevels` is reused with synthesised
   //    TopologyNode / TopologyCall shells.
-  const groupOfId = new Map<string, string>();
-  for (const n of all) groupOfId.set(n.id, gkeyEnc(identity(n.name).group));
+  const clusterOfId = new Map<string, string>();
+  for (const n of all) clusterOfId.set(n.id, ckeyEnc(identity(n.name).cluster));
   const interGroupCalls: TopologyCall[] = [];
   for (const c of calls.value) {
-    const s = groupOfId.get(c.source);
-    const t = groupOfId.get(c.target);
+    const s = clusterOfId.get(c.source);
+    const t = clusterOfId.get(c.target);
     if (s === undefined || t === undefined) continue;
     if (s === t) continue;
     interGroupCalls.push({
@@ -471,7 +559,7 @@ const groupBuckets = computed<GroupBucket[]>(() => {
   }
   const groupKeys = [...byGroup.keys()];
   const metaNodes: TopologyNode[] = groupKeys.map((k) => ({
-    id: k, name: k === UNGROUPED ? '' : k,
+    id: k, name: k === UNCLUSTERED ? '' : k,
     type: null, isReal: true, layers: [],
     metrics: {}, cpm: null, respTime: null, sla: null,
   }));
@@ -483,7 +571,7 @@ const groupBuckets = computed<GroupBucket[]>(() => {
   for (const k of groupKeys) if (!ordered.includes(k)) ordered.push(k);
   // 3. Internal BFS per bucket — restrict the call graph to the
   //    bucket's own ids so the seed-pick + traversal don't leak.
-  const buckets: GroupBucket[] = [];
+  const buckets: ClusterBucket[] = [];
   for (const k of ordered) {
     const groupNodes = byGroup.get(k) ?? [];
     if (groupNodes.length === 0) continue;
@@ -506,8 +594,12 @@ const groupBuckets = computed<GroupBucket[]>(() => {
     for (const n of lay) rowsByCol.set(n.layerIdx, (rowsByCol.get(n.layerIdx) ?? 0) + 1);
     const maxRowsPerCol = Math.max(1, ...rowsByCol.values());
     buckets.push({
-      key: gkeyDec(k),
-      alias: namingRule.value?.alias ?? (gkeyDec(k) ? 'group' : null),
+      key: ckeyDec(k),
+      // Cluster boxes / alias chips only render when the layer carries
+      // an explicit topology-cluster rule. Layers without one have all
+      // nodes in the null-key bucket and never reach this branch with
+      // a non-null key.
+      alias: namingRule.value?.alias ?? null,
       nodes: lay,
       cols,
       maxRowsPerCol,
@@ -523,7 +615,10 @@ const groupBuckets = computed<GroupBucket[]>(() => {
     const innerH = b.maxRowsPerCol * ROW_GAP;
     const w = innerW + GROUP_PAD_X * 2;
     const h = innerH + GROUP_PAD_TOP + GROUP_PAD_BOTTOM;
-    b.rect = { x: cursorX, y: 60, w, h };
+    // y=110 gives ~40px headroom above the cluster boxes so the
+    // floating alias·value chip (which extends ~30px above each
+    // cluster's top edge) has room without clipping at the SVG top.
+    b.rect = { x: cursorX, y: 110, w, h };
     cursorX += w + GROUP_GAP_X;
   }
   return buckets;
@@ -531,10 +626,10 @@ const groupBuckets = computed<GroupBucket[]>(() => {
 
 // `layoutNodes` survives only as the flat list the rest of the view
 // (drag, selection, edges) reads. Order doesn't matter for them; the
-// per-bucket geometry is read off `groupBuckets`.
+// per-bucket geometry is read off `clusterBuckets`.
 const layoutNodes = computed<LayoutNode[]>(() => {
   const out: LayoutNode[] = [];
-  for (const b of groupBuckets.value) for (const n of b.nodes) out.push(n);
+  for (const b of clusterBuckets.value) for (const n of b.nodes) out.push(n);
   return out;
 });
 
@@ -557,16 +652,27 @@ const COL_GAP = 220;
 // reach a clearly distinct row instead of crowding the spine.
 const ROW_GAP = Math.round((NODE_R * 2 + 90) * 1.2);
 const W = computed(() => {
-  const b = groupBuckets.value;
+  const b = clusterBuckets.value;
   if (b.length === 0) return 820;
   const last = b[b.length - 1];
-  return Math.max(820, last.rect.x + last.rect.w + 40);
+  const anchorRight = last.rect.x + last.rect.w + 40;
+  // Cluster rects can extend beyond their BFS anchor once nodes are
+  // dragged; widen the canvas to accommodate the live boxes.
+  const clusterRight = clusterRects.value.reduce(
+    (m, c) => Math.max(m, c.rect.x + c.rect.w + 40),
+    0,
+  );
+  return Math.max(820, anchorRight, clusterRight);
 });
 const H = computed(() => {
-  const b = groupBuckets.value;
+  const b = clusterBuckets.value;
   if (b.length === 0) return 360;
-  const tallest = Math.max(...b.map((x) => x.rect.y + x.rect.h));
-  return tallest + 60;
+  const anchorBottom = Math.max(...b.map((x) => x.rect.y + x.rect.h));
+  const clusterBottom = clusterRects.value.reduce(
+    (m, c) => Math.max(m, c.rect.y + c.rect.h),
+    0,
+  );
+  return Math.max(anchorBottom, clusterBottom) + 60;
 });
 
 /**
@@ -605,7 +711,7 @@ watch(
 
 const nodePos = computed<Map<string, Pos>>(() => {
   const map = new Map<string, Pos>();
-  for (const b of groupBuckets.value) {
+  for (const b of clusterBuckets.value) {
     // Bucket-local column buckets — needed to place each node at its
     // row index *within its column*. The internal BFS already assigns
     // each node a `layerIdx`; the row is the node's position in the
@@ -633,6 +739,61 @@ const nodePos = computed<Map<string, Pos>>(() => {
 const visibleCalls = computed<TopologyCall[]>(() => {
   const ids = new Set(nodePos.value.keys());
   return calls.value.filter((c) => ids.has(c.source) && ids.has(c.target));
+});
+
+/**
+ * Live cluster bounding rects — derived from the actual `nodePos` map
+ * (which already folds in drag overrides) rather than the BFS-anchor
+ * `bucket.rect`. As soon as a node is dragged, the cluster box grows
+ * or shrinks to keep it enclosed. Only buckets with a non-null key
+ * render — layers without a topology-cluster rule never enter here.
+ */
+interface ClusterRect {
+  key: string;
+  alias: string | null;
+  rect: { x: number; y: number; w: number; h: number };
+}
+const CLUSTER_MARGIN = 36; // breathing room around the outermost node centres
+const CLUSTER_HEAD_HEIGHT = 32; // space reserved above the topmost node for the chip
+const clusterRects = computed<ClusterRect[]>(() => {
+  const out: ClusterRect[] = [];
+  for (const b of clusterBuckets.value) {
+    if (!b.key) continue;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let count = 0;
+    for (const n of b.nodes) {
+      const p = nodePos.value.get(n.id);
+      if (!p) continue;
+      count++;
+      if (p.cx < minX) minX = p.cx;
+      if (p.cy < minY) minY = p.cy;
+      if (p.cx > maxX) maxX = p.cx;
+      if (p.cy > maxY) maxY = p.cy;
+    }
+    if (count === 0) continue;
+    // Each "centre" needs room for the node circle (NODE_R) plus the
+    // label text rendered beneath the node (~26px). Inflate by both.
+    const padTop = NODE_R + CLUSTER_HEAD_HEIGHT;
+    const padBot = NODE_R + 32; // label + RPM
+    const padSide = NODE_R + 18;
+    const x = minX - padSide - CLUSTER_MARGIN;
+    // Floor the cluster top so the floating chip (~40px above the top
+    // border) never clips against the SVG's y=0 edge even when the
+    // operator drags a node to the very top of the canvas. When we
+    // clamp the top up, shrink the height by the same amount so the
+    // bottom edge stays anchored to maxY + padding.
+    const CHIP_HEADROOM = 44;
+    const rawY = minY - padTop - CLUSTER_MARGIN;
+    const y = Math.max(CHIP_HEADROOM, rawY);
+    const w = (maxX - minX) + (padSide + CLUSTER_MARGIN) * 2;
+    const naturalH = (maxY - minY) + padTop + padBot + CLUSTER_MARGIN * 2;
+    const h = naturalH - (y - rawY);
+    out.push({ key: b.key, alias: b.alias, rect: { x, y, w, h } });
+  }
+  return out;
 });
 
 /**
@@ -809,6 +970,58 @@ const selectedCallTarget = computed<LayoutNode | null>(() => {
 });
 
 /**
+ * Visual focus sets. When a node OR an edge is selected, we keep the
+ * "related" subgraph at full opacity and dim everything else, so the
+ * operator's eye lands on the conversation they're inspecting:
+ *
+ *   - selected NODE      ⇒ keep selected + its upstream + downstream +
+ *                          the edges joining them.
+ *   - selected EDGE      ⇒ keep edge + both endpoints.
+ *   - BOTH selected      ⇒ union of the two sets (drag-select effect).
+ *   - nothing selected   ⇒ everything renders at full opacity (sets are
+ *                          empty; `hasSelection` is false; the dim
+ *                          branch never fires).
+ */
+const hasSelection = computed<boolean>(
+  () => Boolean(selectedNode.value) || Boolean(selectedCall.value),
+);
+const highlightedNodeIds = computed<Set<string>>(() => {
+  const out = new Set<string>();
+  const selN = selectedNode.value;
+  if (selN) {
+    out.add(selN.id);
+    for (const c of calls.value) {
+      if (c.source === selN.id) out.add(c.target);
+      if (c.target === selN.id) out.add(c.source);
+    }
+  }
+  const selC = selectedCall.value;
+  if (selC) {
+    out.add(selC.source);
+    out.add(selC.target);
+  }
+  return out;
+});
+const highlightedCallIds = computed<Set<string>>(() => {
+  const out = new Set<string>();
+  const selN = selectedNode.value;
+  if (selN) {
+    for (const c of calls.value) {
+      if (c.source === selN.id || c.target === selN.id) out.add(c.id);
+    }
+  }
+  const selC = selectedCall.value;
+  if (selC) out.add(selC.id);
+  return out;
+});
+function isNodeFocused(id: string): boolean {
+  return !hasSelection.value || highlightedNodeIds.value.has(id);
+}
+function isCallFocused(id: string): boolean {
+  return !hasSelection.value || highlightedCallIds.value.has(id);
+}
+
+/**
  * Build a row per metric for the edge-detail sidebar. We pair up the
  * server + client metric defs by `id`, so a metric defined on only
  * one side renders as that side only. The row always carries the
@@ -874,18 +1087,60 @@ function edgeRowValues(c: TopologyCall, row: EdgeRow): {
   if (hasServerV) return { kind: 'server-only', clientV, serverV };
   return { kind: 'none', clientV, serverV };
 }
+// Convention used across the detail panel: the call CHAIN is read
+// from selected service outward.
+//   - `upstream`   = services the selected service depends on (calls
+//                    flow OUTBOUND: sel → X). They sit "earlier" in
+//                    the chain that the selected service is part of.
+//   - `downstream` = services that call the selected service (calls
+//                    flow INBOUND: X → sel). They sit "later" in the
+//                    chain (their request reaches sel as a hop).
+// This matches the user's mental model: "something calling current
+// service ⇒ downstream".
 const upstream = computed<LayoutNode[]>(() => {
-  const sel = selectedNode.value;
-  if (!sel) return [];
-  const ids = new Set(calls.value.filter((c) => c.target === sel.id).map((c) => c.source));
-  return layoutNodes.value.filter((n) => ids.has(n.id));
-});
-const downstream = computed<LayoutNode[]>(() => {
   const sel = selectedNode.value;
   if (!sel) return [];
   const ids = new Set(calls.value.filter((c) => c.source === sel.id).map((c) => c.target));
   return layoutNodes.value.filter((n) => ids.has(n.id));
 });
+const downstream = computed<LayoutNode[]>(() => {
+  const sel = selectedNode.value;
+  if (!sel) return [];
+  const ids = new Set(calls.value.filter((c) => c.target === sel.id).map((c) => c.source));
+  return layoutNodes.value.filter((n) => ids.has(n.id));
+});
+
+/**
+ * Sub-bucket a related-services list (upstream / downstream) by the
+ * identity group of each row. When the layer has a topology-cluster
+ * rule, the detail-panel reader can scan namespace-by-namespace; when
+ * the rule isn't configured (or no row has a group) everything
+ * collapses to a single null-key bucket and renders unchanged.
+ *
+ * The output preserves the natural BFS order within each bucket and
+ * orders buckets by first appearance.
+ */
+interface RelatedGroup {
+  key: string | null;
+  alias: string | null;
+  rows: LayoutNode[];
+}
+function bucketRelated(list: LayoutNode[]): RelatedGroup[] {
+  const map = new Map<string, RelatedGroup>();
+  const order: string[] = [];
+  for (const n of list) {
+    const id = identity(n.name);
+    const k = id.cluster ?? '';
+    if (!map.has(k)) {
+      map.set(k, { key: id.cluster, alias: id.clusterAlias, rows: [] });
+      order.push(k);
+    }
+    map.get(k)!.rows.push(n);
+  }
+  return order.map((k) => map.get(k)!);
+}
+const upstreamByNs = computed<RelatedGroup[]>(() => bucketRelated(upstream.value));
+const downstreamByNs = computed<RelatedGroup[]>(() => bucketRelated(downstream.value));
 
 /**
  * Resolve the layer key we should jump into for the selected node.
@@ -1197,18 +1452,20 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
             <!-- Soft radial glow behind the chain — pure decoration. -->
             <rect :width="W" :height="H" fill="url(#sm-bg-glow)" />
 
-            <!-- Group bounding boxes — one rounded-rect per namespace /
-                 group with a dashed border + an alias·value chip
-                 anchored top-left. Rendered BENEATH edges so cross-
-                 group calls visually cross the box boundary. The
-                 implicit "no-group" bucket (synthetic User / external)
-                 renders no box. -->
-            <g class="sm-group-layer">
-              <template v-for="b in groupBuckets" :key="b.key ?? '__none__'">
-                <g v-if="b.key" :transform="`translate(${b.rect.x}, ${b.rect.y})`">
+            <!-- Topology cluster bounding boxes — one rounded-rect per
+                 cluster value (e.g. k8s namespace) with a dashed
+                 border. Rects are derived live from current node
+                 positions so dragging a node grows / shrinks the box
+                 to keep it enclosed. The alias·value chip floats
+                 ABOVE the box top so the rounded border reads
+                 unbroken. Layers without a topology-cluster rule
+                 produce zero entries here ⇒ no box renders. -->
+            <g class="sm-cluster-layer">
+              <template v-for="c in clusterRects" :key="c.key">
+                <g :transform="`translate(${c.rect.x}, ${c.rect.y})`">
                   <rect
-                    :width="b.rect.w"
-                    :height="b.rect.h"
+                    :width="c.rect.w"
+                    :height="c.rect.h"
                     rx="14"
                     ry="14"
                     fill="var(--sw-bg-1)"
@@ -1217,36 +1474,40 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
                     stroke-width="1"
                     stroke-dasharray="4 5"
                   />
-                  <!-- alias chip top-left, inset by the same horizontal
-                       padding as the node columns. -->
-                  <g transform="translate(14, 18)">
+                  <!-- Floating chip: sits with its baseline ~18px
+                       above the box's top edge so neither the border
+                       nor the chip overlap the cluster contents. The
+                       cluster *value* is rendered noticeably larger
+                       than the alias label — the name is the signal,
+                       the alias is just a qualifier. -->
+                  <g transform="translate(20, -18)">
                     <rect
                       x="0"
-                      y="-12"
-                      :width="Math.max(80, (b.alias ?? '').length * 6 + (b.key ?? '').length * 7 + 24)"
-                      height="20"
-                      rx="10"
-                      ry="10"
+                      y="-19"
+                      :width="14 + (c.alias ?? '').length * 7.5 + 12 + (c.key ?? '').length * 11 + 18"
+                      height="32"
+                      rx="16"
+                      ry="16"
                       fill="var(--sw-bg-0)"
                       stroke="var(--sw-accent-line)"
-                      stroke-width="1"
+                      stroke-width="1.2"
                     />
                     <text
-                      x="10"
-                      y="2"
+                      x="14"
+                      y="4"
                       fill="var(--sw-fg-3)"
-                      font-size="10"
+                      font-size="12"
                       font-family="var(--sw-mono)"
                       font-weight="500"
-                    >{{ b.alias }} ·</text>
+                    >{{ c.alias }} ·</text>
                     <text
-                      :x="10 + (b.alias?.length ?? 0) * 6 + 12"
-                      y="2"
+                      :x="14 + (c.alias ?? '').length * 7.5 + 12"
+                      y="5"
                       fill="var(--sw-accent-2)"
-                      font-size="11"
+                      font-size="18"
                       font-family="var(--sw-mono)"
                       font-weight="700"
-                    >{{ b.key }}</text>
+                    >{{ c.key }}</text>
                   </g>
                 </g>
               </template>
@@ -1256,6 +1517,7 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
               v-for="c in visibleCalls"
               :key="c.id"
               class="sm-edge"
+              :class="{ 'sm-dim': !isCallFocused(c.id) }"
               @click.stop="selectCall(c.id)"
             >
               <!-- Invisible wide hit-path: gives the operator a
@@ -1366,6 +1628,7 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
               :data-node-id="n.id"
               :transform="`translate(${nodePos.get(n.id)!.cx}, ${nodePos.get(n.id)!.cy})`"
               class="sm-node"
+              :class="{ 'sm-dim': !isNodeFocused(n.id) }"
               style="cursor: grab"
               @click.stop="selectNode(n.id)"
             >
@@ -1532,7 +1795,10 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
         </div>
 
         <div class="legend">
-          <div v-if="ringDef" class="lg-label">{{ ringDef.label }}</div>
+          <div v-if="ringDef" class="lg-label">
+            {{ ringDef.label }}
+            <span class="lg-direction">{{ ringDirectionHint }}</span>
+          </div>
           <div v-if="ringDef" class="lg-ramp">
             <span style="background: var(--sw-ok)" />
             <span style="background: #fbbf24" />
@@ -1540,7 +1806,7 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
             <span style="background: var(--sw-err)" />
           </div>
           <div v-if="ringDef" class="lg-scale">
-            <span>0%</span><span>0.1%</span><span>1%</span><span>5%+</span>
+            <span v-for="(lbl, i) in ringScaleLabels" :key="i">{{ lbl }}</span>
           </div>
           <div class="lg-rule" />
           <div class="lg-row">
@@ -1564,9 +1830,13 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
           <div class="sp-id">
             <div class="sp-mono">{{ identity(selectedNode.name).display }}</div>
             <div class="sp-tags">
-              <span v-if="identity(selectedNode.name).group" class="sw-tag accent">
-                <span class="tag-alias">{{ identity(selectedNode.name).alias }}</span>
-                <span class="tag-val">{{ identity(selectedNode.name).group }}</span>
+              <span v-if="identity(selectedNode.name).cluster" class="sw-tag accent">
+                <span class="tag-alias">{{ identity(selectedNode.name).clusterAlias }}</span>
+                <span class="tag-val">{{ identity(selectedNode.name).cluster }}</span>
+              </span>
+              <span v-if="showLegacyGroup && identity(selectedNode.name).legacyGroup" class="sw-tag">
+                <span class="tag-alias">group</span>
+                <span class="tag-val">{{ identity(selectedNode.name).legacyGroup }}</span>
               </span>
               <span v-for="l in selectedNode.layers" :key="l" class="sw-tag">{{ l }}</span>
               <span v-if="!selectedNode.isReal" class="sw-tag">virtual</span>
@@ -1583,33 +1853,39 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
           </div>
         </div>
         <div class="sp-section">
-          <div class="sp-section-title">Upstream callers ({{ upstream.length }})</div>
+          <div class="sp-section-title">Upstream — services this one calls ({{ upstream.length }})</div>
           <ul class="sp-list">
-            <li v-for="u in upstream" :key="u.id">
-              <span class="sp-pulse" :style="{ color: ringColor(u) }">●</span>
-              <span v-if="identity(u.name).group" class="sw-tag accent tiny">
-                <span class="tag-alias">{{ identity(u.name).alias }}</span>
-                <span class="tag-val">{{ identity(u.name).group }}</span>
-              </span>
-              <span class="sp-mono small">{{ identity(u.name).display }}</span>
-              <span class="sp-cpm">{{ fmtWithUnit(nodeVal(u, centerDef), centerDef?.unit) }}</span>
-            </li>
-            <li v-if="upstream.length === 0" class="sp-empty">no upstream callers in window</li>
+            <template v-for="(g, gi) in upstreamByNs" :key="gi">
+              <li v-if="g.key" class="sp-ns-head">
+                <span class="sp-ns-alias">{{ g.alias }}</span>
+                <span class="sp-ns-val">{{ g.key }}</span>
+                <span class="sp-ns-count">{{ g.rows.length }}</span>
+              </li>
+              <li v-for="u in g.rows" :key="u.id">
+                <span class="sp-pulse" :style="{ color: ringColor(u) }">●</span>
+                <span class="sp-mono small">{{ identity(u.name).display }}</span>
+                <span class="sp-cpm">{{ fmtWithUnit(nodeVal(u, centerDef), centerDef?.unit) }}</span>
+              </li>
+            </template>
+            <li v-if="upstream.length === 0" class="sp-empty">no outbound calls in window</li>
           </ul>
         </div>
         <div class="sp-section">
-          <div class="sp-section-title">Downstream deps ({{ downstream.length }})</div>
+          <div class="sp-section-title">Downstream — services calling this one ({{ downstream.length }})</div>
           <ul class="sp-list">
-            <li v-for="d in downstream" :key="d.id">
-              <span class="sp-pulse" :style="{ color: ringColor(d) }">●</span>
-              <span v-if="identity(d.name).group" class="sw-tag accent tiny">
-                <span class="tag-alias">{{ identity(d.name).alias }}</span>
-                <span class="tag-val">{{ identity(d.name).group }}</span>
-              </span>
-              <span class="sp-mono small">{{ identity(d.name).display }}</span>
-              <span class="sp-cpm">{{ fmtWithUnit(nodeVal(d, secondaryDef), secondaryDef?.unit) }}</span>
-            </li>
-            <li v-if="downstream.length === 0" class="sp-empty">no downstream deps in window</li>
+            <template v-for="(g, gi) in downstreamByNs" :key="gi">
+              <li v-if="g.key" class="sp-ns-head">
+                <span class="sp-ns-alias">{{ g.alias }}</span>
+                <span class="sp-ns-val">{{ g.key }}</span>
+                <span class="sp-ns-count">{{ g.rows.length }}</span>
+              </li>
+              <li v-for="d in g.rows" :key="d.id">
+                <span class="sp-pulse" :style="{ color: ringColor(d) }">●</span>
+                <span class="sp-mono small">{{ identity(d.name).display }}</span>
+                <span class="sp-cpm">{{ fmtWithUnit(nodeVal(d, secondaryDef), secondaryDef?.unit) }}</span>
+              </li>
+            </template>
+            <li v-if="downstream.length === 0" class="sp-empty">no inbound callers in window</li>
           </ul>
         </div>
         <!-- Node-only dashboard jumps. Edges deliberately have no
@@ -1634,17 +1910,25 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
           <div class="sp-id">
             <div class="sp-edge-row">
               <span class="sp-svc">
-                <span v-if="identity(selectedCallSource.name).group" class="sw-tag accent tiny">
-                  <span class="tag-alias">{{ identity(selectedCallSource.name).alias }}</span>
-                  <span class="tag-val">{{ identity(selectedCallSource.name).group }}</span>
+                <span v-if="identity(selectedCallSource.name).cluster" class="sw-tag accent tiny">
+                  <span class="tag-alias">{{ identity(selectedCallSource.name).clusterAlias }}</span>
+                  <span class="tag-val">{{ identity(selectedCallSource.name).cluster }}</span>
+                </span>
+                <span v-if="showLegacyGroup && identity(selectedCallSource.name).legacyGroup" class="sw-tag tiny">
+                  <span class="tag-alias">group</span>
+                  <span class="tag-val">{{ identity(selectedCallSource.name).legacyGroup }}</span>
                 </span>
                 <span class="sp-mono small">{{ identity(selectedCallSource.name).display }}</span>
               </span>
               <span class="sp-edge-arrow">→</span>
               <span class="sp-svc">
-                <span v-if="identity(selectedCallTarget.name).group" class="sw-tag accent tiny">
-                  <span class="tag-alias">{{ identity(selectedCallTarget.name).alias }}</span>
-                  <span class="tag-val">{{ identity(selectedCallTarget.name).group }}</span>
+                <span v-if="identity(selectedCallTarget.name).cluster" class="sw-tag accent tiny">
+                  <span class="tag-alias">{{ identity(selectedCallTarget.name).clusterAlias }}</span>
+                  <span class="tag-val">{{ identity(selectedCallTarget.name).cluster }}</span>
+                </span>
+                <span v-if="showLegacyGroup && identity(selectedCallTarget.name).legacyGroup" class="sw-tag tiny">
+                  <span class="tag-alias">group</span>
+                  <span class="tag-val">{{ identity(selectedCallTarget.name).legacyGroup }}</span>
                 </span>
                 <span class="sp-mono small">{{ identity(selectedCallTarget.name).display }}</span>
               </span>
@@ -2054,6 +2338,17 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
   filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.45));
 }
 .sm-edge { cursor: pointer; }
+/* Selection focus: when ANY node or edge is selected, every node /
+   edge that's NOT part of the related subgraph (selected node + its
+   upstream + downstream + their joining edges; or selected edge +
+   both endpoints) gets the `.sm-dim` class. The dimmed treatment
+   keeps the canvas readable as context without competing for the
+   eye. Opacity is animated so quick selection cycling reads as a
+   smooth focus pull, not a flash. */
+.sm-node, .sm-edge { transition: opacity 0.15s ease; }
+.sm-node.sm-dim { opacity: 0.22; }
+.sm-edge.sm-dim { opacity: 0.12; }
+.sm-node.sm-dim:hover, .sm-edge.sm-dim:hover { opacity: 0.55; }
 .sm-edge:hover path:nth-of-type(2) {
   stroke: var(--sw-accent-2) !important;
   opacity: 1 !important;
@@ -2226,6 +2521,17 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
   letter-spacing: 0.08em;
   color: var(--sw-fg-3);
   margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.lg-direction {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--sw-fg-3);
+  font-style: italic;
+  opacity: 0.85;
 }
 .lg-ramp {
   display: flex;
@@ -2366,6 +2672,39 @@ function fmtWithUnit(v: number | null | undefined, unit: string | undefined): st
   font-size: 11px;
 }
 .sp-list li:last-child { border-bottom: none; }
+/* Sub-header for related-service lists when grouped by cluster (k8s
+   namespace / mesh namespace). Shows the alias·value chip + the row
+   count for that bucket and visually separates the rows beneath. */
+.sp-ns-head {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sw-fg-3);
+  background: var(--sw-bg-2);
+  padding: 4px 8px !important;
+  margin-top: 4px;
+  border-radius: 4px;
+  border-bottom: 1px solid var(--sw-line) !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sp-ns-head:first-child { margin-top: 0; }
+.sp-ns-alias { color: var(--sw-fg-3); }
+.sp-ns-alias::after { content: '·'; margin-left: 4px; }
+.sp-ns-val {
+  color: var(--sw-accent-2);
+  font-family: var(--sw-mono);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+.sp-ns-count {
+  margin-left: auto;
+  color: var(--sw-fg-3);
+  font-family: var(--sw-mono);
+  font-weight: 500;
+}
 .sp-mono.small { font-family: var(--sw-mono); font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sw-fg-1); }
 .sp-pulse { font-size: 8px; }
 .sp-cpm { font-family: var(--sw-mono); font-size: 10.5px; color: var(--sw-fg-3); }

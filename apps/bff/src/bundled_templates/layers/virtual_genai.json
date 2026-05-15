@@ -6,12 +6,12 @@
   "documentLink": "https://skywalking.apache.org/docs/main/next/en/setup/service-agent/virtual-genai/",
   "aliases": {
     "services": "GenAI Providers",
-    "endpoints": "Models"
+    "instances": "Models"
   },
   "components": {
     "service": true,
-    "instances": false,
-    "endpoints": true,
+    "instances": true,
+    "endpoints": false,
     "topology": false,
     "traces": false,
     "logs": false
@@ -179,7 +179,7 @@
         "rowSpan": 2
       }
     ],
-    "endpoint": [
+    "instance": [
       {
         "id": "cpm",
         "title": "Calls / min",

@@ -38,6 +38,8 @@ import { getLayerTemplate, type LayerComponentFlags } from '../layers/loader.js'
 function componentsToCaps(components: LayerComponentFlags): LayerCaps {
   return {
     dashboards: components.service !== false,
+    instances: !!components.instances,
+    endpoints: !!components.endpoints,
     endpointDependency: !!components.endpointDependency,
     serviceMap: !!components.topology,
     instanceTopology: !!components.topology,

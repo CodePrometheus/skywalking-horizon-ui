@@ -26,7 +26,7 @@
       default entry; the cross-layer Overview lives at `/`.
 -->
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
 import type { LayerDef } from '@skywalking-horizon-ui/api-client';
 import Icon from '@/components/icons/Icon.vue';
@@ -102,6 +102,23 @@ const selectedName = computed(() => {
 // future component-driven views (dashboards with their own filters,
 // say) can flip the same meta flag without touching this file.
 const viewOwnsServiceSelector = computed(() => Boolean(route.meta?.ownsServiceSelector));
+
+// Keep the URL-backed service selection honest for every page that
+// uses the shell picker. A stale `?service=` can survive navigation or
+// manual URL entry; the switch label used to fall back visually to the
+// first row while the metric query still waited for a valid service.
+watch(
+  [sampledServices, selectedId, viewOwnsServiceSelector],
+  ([rows, id, ownsSelector]) => {
+    if (ownsSelector) return;
+    const first = rows[0];
+    if (!first) return;
+    if (!id || !rows.some((s) => s.serviceId === id)) {
+      setSelected(first.serviceId);
+    }
+  },
+  { immediate: true },
+);
 
 // Picker toggle state. Lives at the shell level so the header's Switch
 // button and the picker section render against the same state.

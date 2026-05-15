@@ -130,11 +130,14 @@ export function registerInstanceRoute(app: FastifyInstance, deps: InstanceRouteD
       const cfgCurrent = deps.config.current;
       const opts = buildOapOpts(cfgCurrent, deps.fetch);
       const window = defaultWindow();
-      // OAP-side ids look like base64-ish blobs (e.g. "Y2hlY2tvdXQ=.1");
-      // names are plain words. If we don't see a `.` separator, treat
-      // the arg as a name and resolve to an id first.
+      // OAP service-id shape: `<base64>.<digits>` (e.g.
+      // `Y2hlY2tvdXQ=.1`). Anything else — including names that
+      // happen to contain `.` like `mesh-svr::r3-load.sample-services`
+      // — needs a `listServices` lookup. The earlier "contains `.`"
+      // heuristic was too loose and broke mesh / k8s_service instance
+      // queries whose service names embed dots.
       let serviceId = serviceArg;
-      if (!serviceArg.includes('.') || /\s/.test(serviceArg)) {
+      if (!/^[A-Za-z0-9+/=]+\.\d+$/.test(serviceArg)) {
         try {
           const data = await graphqlPost<ListServicesResp>(opts, LIST_SERVICES_FOR_RESOLVE, {
             layer: layerKey.toUpperCase(),

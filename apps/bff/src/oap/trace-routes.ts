@@ -210,15 +210,18 @@ const QUERY_TRACE_DETAIL = /* GraphQL */ `
 
 // ── Helpers ────────────────────────────────────────────────────────
 
+// OAP service-id shape: `<base64>.<digits>`. Match strictly so we
+// don't mis-classify names containing `.` (e.g. `*.sample-services`)
+// as ids — the earlier "contains `.` and no whitespace" heuristic was
+// too loose and broke trace queries on mesh-layer services.
+const OAP_SERVICE_ID_RE = /^[A-Za-z0-9+/=]+\.\d+$/;
 async function resolveServiceId(
   opts: GraphqlOptions,
   layer: string,
   serviceArg: string,
 ): Promise<string | null> {
   if (!serviceArg) return null;
-  // Ids contain `.`; names rarely do. Short-circuit when it's already
-  // an id.
-  if (serviceArg.includes('.') && !/\s/.test(serviceArg)) return serviceArg;
+  if (OAP_SERVICE_ID_RE.test(serviceArg)) return serviceArg;
   const data = await graphqlPost<{
     services: Array<{ id: string; name: string }>;
   }>(opts, LIST_SERVICES_FOR_RESOLVE, { layer: layer.toUpperCase() });

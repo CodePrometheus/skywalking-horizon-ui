@@ -69,9 +69,11 @@ const landingRows = computed(() => landing.data.value?.sampledRows ?? landing.ro
 watch(
   landingRows,
   (rows) => {
-    if (selectedId.value) return;
     const first = rows[0];
-    if (first) setSelectedService(first.serviceId);
+    if (!first) return;
+    if (!selectedId.value || !rows.some((r) => r.serviceId === selectedId.value)) {
+      setSelectedService(first.serviceId);
+    }
   },
   { immediate: true },
 );
@@ -99,18 +101,11 @@ const showEndpointSelector = computed(() => logScope.value !== 'endpoint');
 //   - `endpoint` scope: optional narrower as well.
 const { selectedInstance, setSelectedInstance } = useSelectedInstance();
 const { instances: instanceList } = useLayerInstances(layerKey, serviceName);
-// Auto-pick the first instance ONLY when the layer pins instance via
-// `log.scope === 'instance'` (mesh_dp sidecar logs). For service /
-// endpoint scopes the picker stays empty by default so the operator's
-// landing view is "all instances of the picked service" — auto-binding
-// to one instance narrows the query and routinely returns zero rows
-// when that specific instance happens to be quiet.
-watch([instanceList, logScope], ([list, scope]) => {
-  if (scope !== 'instance') return;
-  if (selectedInstance.value) return;
-  const first = list[0];
-  if (first) setSelectedInstance(first.name);
-});
+// Logs (and traces) intentionally do NOT auto-select an instance.
+// Default is `All` so the stream starts broad; the operator opts into
+// narrowing by picking from the dropdown. Auto-selection is reserved
+// for metrics-scope pages (instance / endpoint dashboards), where a
+// chosen entity is needed to render the metric widgets at all.
 watch(serviceName, (next, prev) => {
   if (prev !== undefined && next !== prev && selectedInstance.value) {
     setSelectedInstance(null);
@@ -167,16 +162,8 @@ const { endpoints: endpointList, isFetching: endpointsLoading } = useLayerEndpoi
   endpointQuery,
   endpointLimit,
 );
-// Auto-pick first endpoint ONLY when the layer pins endpoint via
-// `log.scope === 'endpoint'`. Same reasoning as the instance picker:
-// auto-pinning narrows the query and the operator typically wants the
-// landing view to be "any endpoint of the picked service".
-watch([endpointList, logScope], ([list, scope]) => {
-  if (scope !== 'endpoint') return;
-  if (selectedEndpoint.value) return;
-  const first = list[0];
-  if (first) setSelectedEndpoint(first.name);
-});
+// No endpoint auto-pick on Logs either — same reasoning as the
+// instance picker above. Default is `All`; operator narrows by hand.
 watch(serviceName, (next, prev) => {
   if (prev !== undefined && next !== prev && selectedEndpoint.value) {
     setSelectedEndpoint(null);
@@ -467,14 +454,10 @@ const levelFacet = computed<Record<Level, number>>(() => {
 // reflect it — no client-side narrowing needed.
 const filteredLogs = computed<LogRow[]>(() => logs.value);
 
-// ── Row expand state. Loki / Datadog use inline expand for the
-// detail rather than a separate right pane. ----------------------
-const expandedId = ref<string | null>(null);
+// Row keys for `<template v-for>`. Inline expand is gone — click
+// now opens the full-canvas popout via `onRowClick(r)`.
 function rowKey(r: LogRow, idx: number): string {
   return `${r.timestamp}-${r.traceId ?? ''}-${idx}`;
-}
-function toggleExpand(key: string): void {
-  expandedId.value = expandedId.value === key ? null : key;
 }
 
 function fmtTime(ts: number): string {
@@ -486,10 +469,50 @@ function fmtDate(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 }
+/**
+ * Render a one-line inline preview. Length is NOT capped here — the
+ * row's CSS (`.lg-content-body { white-space: nowrap; overflow:
+ * hidden; text-overflow: ellipsis }`) clips at the actual visible
+ * width, so wider viewports surface more of the payload while narrow
+ * ones still get a clean ellipsis. The slicing-at-220-chars heuristic
+ * I had before always cut at the same offset regardless of width.
+ *
+ *   - JSON: re-serialize to the tightest single-line form so the row
+ *     reads as `{"level":"error","msg":"…"}` and not the raw
+ *     whitespace-laden source.
+ *   - YAML: collapse newlines into a single space so the row still
+ *     carries the keys (`apiVersion: v1 kind: Pod spec: containers:
+ *     - name: nginx`). Indentation chars stay, which preserves a
+ *     visual sense of the hierarchy even on one line. The popout is
+ *     the right place to read the proper multi-line structure.
+ *   - Text: whitespace collapsed, same as before.
+ */
 function summariseContent(r: LogRow): string {
   if (!r.content) return '';
-  const oneLine = r.content.replace(/\s+/g, ' ').trim();
-  return oneLine.length > 220 ? oneLine.slice(0, 218) + '…' : oneLine;
+  const fmt = detectFormat(r);
+  if (fmt === 'json') {
+    try {
+      return JSON.stringify(JSON.parse(r.content));
+    } catch {
+      /* fall through to the plain compaction below */
+    }
+  }
+  if (fmt === 'yaml') {
+    // Replace newlines with a single space — keeps the indentation
+    // characters that sit at the start of each line, which gives the
+    // operator a visual cue of nesting depth even when flattened.
+    return r.content.replace(/\n+/g, ' ').trim();
+  }
+  // Plain text — collapse any runs of whitespace.
+  return r.content.replace(/\s+/g, ' ').trim();
+}
+/** With the new flattening rule above, every payload has a usable
+ *  inline preview — JSON, YAML, and multi-line text all flatten to
+ *  one line cleanly. We no longer need a hidden-payload affordance.
+ *  Returns false unconditionally; kept so the template doesn't have
+ *  to change. */
+function hasHiddenPayload(_r: LogRow): boolean {
+  return false;
 }
 function tryPrettyJson(content: string): string {
   try {
@@ -545,6 +568,49 @@ async function copyPopout(): Promise<void> {
   } catch {
     /* clipboard may be blocked; silently no-op */
   }
+}
+// ESC closes the popout. Bound on the window so it works whether or
+// not the popout has keyboard focus (clicking the modal sometimes
+// drops focus into the underlying row).
+function onGlobalKeydown(ev: KeyboardEvent): void {
+  if (ev.key === 'Escape' && popoutRow.value) {
+    ev.preventDefault();
+    closePopout();
+  }
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', onGlobalKeydown);
+}
+
+/**
+ * Row click → open popout. The inline expand is intentionally gone —
+ * for multi-line / YAML / JSON payloads it rendered as a cramped strip
+ * inside the row band; the popout has the full canvas. Trace-id chip
+ * and group decoder still propagate stop-events so their own clicks
+ * don't bubble.
+ */
+function onRowClick(r: LogRow): void {
+  openPopout(r);
+}
+
+// Custom hover tooltip state for the density bar. Native browser
+// `title` was making the cursor render as `?` (help-cursor) instead
+// of showing the count, which read like a UI bug.
+const hoveredBin = ref<number | null>(null);
+function fmtBucketRange(idx: number, t0: number, t1: number): string {
+  if (!t0 || !t1) return '';
+  const span = (t1 - t0) || 1;
+  const start = new Date(t0 + (span * idx) / BINS);
+  const end = new Date(t0 + (span * (idx + 1)) / BINS);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+function fmtAxisTime(ts: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Open the trace in the global popout overlay rather than navigating
@@ -724,23 +790,60 @@ function jumpToTrace(traceId: string): void {
           </span>
         </div>
 
-        <!-- Density bar -->
-        <div class="lg-density" v-if="histogram.bins.length > 0">
-          <div
-            v-for="(bin, i) in histogram.bins"
-            :key="i"
-            class="lg-density-bin"
-            :title="histogram.t0 ? new Date(histogram.t0 + ((histogram.t1 - histogram.t0) * (i + 0.5)) / 60).toLocaleString() : ''"
-          >
-            <span
-              v-for="l in LEVEL_ORDER"
-              :key="l"
-              class="lg-density-segment"
-              :style="{
-                background: LEVEL_COLOR[l],
-                height: histogram.max ? (bin[l] / histogram.max * 100) + '%' : '0%',
-              }"
-            />
+        <!-- Density bar — x: time, y: count, color: level. Hover a
+             bin: a custom tooltip (NOT the native `title` — the
+             native cursor was rendering as a help cursor `?` instead
+             of the count, which was confusing) shows the bucket time
+             range + per-level counts. Axis tick labels under the bar
+             carry the time scale. -->
+        <div class="lg-density-wrap" v-if="histogram.bins.length > 0" @mouseleave="hoveredBin = null">
+          <div class="lg-density">
+            <div
+              v-for="(bin, i) in histogram.bins"
+              :key="i"
+              class="lg-density-bin"
+              @mouseenter="hoveredBin = i"
+            >
+              <span
+                v-for="l in LEVEL_ORDER"
+                :key="l"
+                class="lg-density-segment"
+                :style="{
+                  background: LEVEL_COLOR[l],
+                  height: histogram.max ? (bin[l] / histogram.max * 100) + '%' : '0%',
+                }"
+              />
+            </div>
+            <!-- Custom hover tooltip — replaces the native browser
+                 tooltip which was both slow to appear AND coupled to
+                 the `cursor: help` rendering (the `?` cursor was the
+                 thing the operator was reporting). -->
+            <div
+              v-if="hoveredBin !== null"
+              class="lg-density-tip"
+              :style="{ left: ((hoveredBin + 0.5) / 60) * 100 + '%' }"
+            >
+              <div class="lg-density-tip-time">
+                {{ fmtBucketRange(hoveredBin, histogram.t0, histogram.t1) }}
+              </div>
+              <div class="lg-density-tip-total">
+                {{ histogram.bins[hoveredBin].error + histogram.bins[hoveredBin].warn + histogram.bins[hoveredBin].info + histogram.bins[hoveredBin].debug + histogram.bins[hoveredBin].other }} log<template v-if="(histogram.bins[hoveredBin].error + histogram.bins[hoveredBin].warn + histogram.bins[hoveredBin].info + histogram.bins[hoveredBin].debug + histogram.bins[hoveredBin].other) !== 1">s</template>
+              </div>
+              <div class="lg-density-tip-rows">
+                <span v-for="l in LEVEL_ORDER" :key="l" v-show="histogram.bins[hoveredBin][l] > 0" class="lg-density-tip-row">
+                  <span class="lvl-dot" :style="{ background: LEVEL_COLOR[l] }" />
+                  <span class="lg-density-tip-name">{{ l }}</span>
+                  <span class="lg-density-tip-val mono">{{ histogram.bins[hoveredBin][l] }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="lg-density-axis">
+            <span class="t-tick">{{ fmtAxisTime(histogram.t0) }}</span>
+            <span class="t-tick">{{ fmtAxisTime(histogram.t0 + (histogram.t1 - histogram.t0) * 0.25) }}</span>
+            <span class="t-tick">{{ fmtAxisTime(histogram.t0 + (histogram.t1 - histogram.t0) * 0.5) }}</span>
+            <span class="t-tick">{{ fmtAxisTime(histogram.t0 + (histogram.t1 - histogram.t0) * 0.75) }}</span>
+            <span class="t-tick">{{ fmtAxisTime(histogram.t1) }}</span>
           </div>
         </div>
 
@@ -750,14 +853,14 @@ function jumpToTrace(traceId: string): void {
         </div>
         <div v-else class="lg-stream">
           <template v-for="(r, idx) in filteredLogs" :key="rowKey(r, idx)">
-            <div class="lg-row" :class="`lv-${levelOf(r)}`" @click="toggleExpand(rowKey(r, idx))">
+            <!-- Row click → open the popout. Inline expand removed:
+                 YAML / JSON / multi-line text rendered cramped inside
+                 the row band and reads as truncated. The popout has
+                 the full canvas + format-aware pretty-print. -->
+            <div class="lg-row" :class="`lv-${levelOf(r)}`" @click="onRowClick(r)">
               <span class="lg-time mono">{{ fmtTime(r.timestamp) }}</span>
               <span class="lg-date mono dim">{{ fmtDate(r.timestamp) }}</span>
               <span class="lg-lvl" :style="{ color: LEVEL_COLOR[levelOf(r)] }">{{ levelOf(r) }}</span>
-              <!-- Decode the OAP `<group>::<base>` convention so the
-                   row reads as "<chip> base" instead of dumping the
-                   raw `agent::songs` string. Falls back to the plain
-                   name when no group prefix is present. -->
               <span class="lg-svc mono dim">
                 <span
                   v-if="r.serviceName && parseServiceName(r.serviceName).group"
@@ -766,30 +869,21 @@ function jumpToTrace(traceId: string): void {
                 {{ r.serviceName ? parseServiceName(r.serviceName).base : '—' }}
               </span>
               <span v-if="r.traceId" class="lg-trace mono" @click.stop="jumpToTrace(r.traceId!)">↗ trace</span>
-              <span class="lg-content mono">{{ summariseContent(r) }}</span>
-            </div>
-            <div v-if="expandedId === rowKey(r, idx)" class="lg-expand">
-              <pre
-                v-if="detectFormat(r) === 'json'"
-                class="lg-payload json"
-              >{{ prettyForFormat(r, 'json') }}</pre>
-              <pre
-                v-else-if="detectFormat(r) === 'yaml'"
-                class="lg-payload yaml"
-              >{{ r.content }}</pre>
-              <pre v-else class="lg-payload text">{{ r.content }}</pre>
-              <div v-if="r.tags.length > 0" class="lg-tag-row">
-                <span v-for="t in r.tags" :key="`${t.key}=${t.value}`" class="lg-tag">
-                  <span class="lg-tag-k">{{ t.key }}</span>
-                  <span class="lg-tag-v mono">{{ t.value }}</span>
+              <!-- Format chip + flat content preview. Chip is always
+                   rendered so the operator can tell at-a-glance which
+                   rows are JSON / YAML / plain text. Preview is single
+                   line, length-capped, and trimmed-with-ellipsis via
+                   `.lg-content` CSS so even when JSON contains long
+                   strings the row stays one line. -->
+              <span class="lg-content mono">
+                <span class="lg-fmt-chip" :class="`fmt-${detectFormat(r)}`">{{ detectFormat(r).toUpperCase() }}</span>
+                <span class="lg-content-body">
+                  <template v-if="hasHiddenPayload(r)">
+                    <em class="lg-content-hint">click to view</em>
+                  </template>
+                  <template v-else>{{ summariseContent(r) }}</template>
                 </span>
-              </div>
-              <div class="lg-meta-row">
-                <span v-if="r.serviceInstanceName" class="lg-meta">instance <code>{{ r.serviceInstanceName }}</code></span>
-                <span v-if="r.endpointName" class="lg-meta">endpoint <code>{{ r.endpointName }}</code></span>
-                <span class="lg-meta">type <code>{{ detectFormat(r).toUpperCase() }}</code></span>
-                <button class="sw-btn small" type="button" @click.stop="openPopout(r)">View full</button>
-              </div>
+              </span>
             </div>
           </template>
         </div>
@@ -900,7 +994,7 @@ function jumpToTrace(traceId: string): void {
 }
 /* Trace-style toolbar layout (same voice as `LayerTracesView`). */
 .lg-toolbar { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; overflow: visible; }
-.lg-toolbar-head { display: flex; align-items: baseline; gap: 10px; }
+.lg-toolbar-head { display: flex; align-items: center; gap: 10px; width: 100%; }
 /* Run-query button: SkyWalking orange, sits at the right edge of the
    toolbar head row. Matches `LayerTracesView.tr-run-btn` exactly so the
    two pages read identically. `.sw-btn.primary` is locally scoped per
@@ -1001,7 +1095,7 @@ function jumpToTrace(traceId: string): void {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cf-combo-item em { color: var(--sw-fg-3); font-style: italic; }
+.cf-combo-item em { color: var(--sw-fg-1); font-style: normal; font-family: var(--sw-mono); }
 .cf-combo-item:hover { background: var(--sw-bg-2); color: var(--sw-fg-0); }
 .cf-combo-item.on { background: var(--sw-accent-soft); color: var(--sw-accent-2); font-weight: 600; }
 .cf-combo-empty { padding: 6px 8px; font-size: 10.5px; color: var(--sw-fg-3); }
@@ -1118,15 +1212,20 @@ function jumpToTrace(traceId: string): void {
   flex-direction: column;
   min-height: 0;
 }
+/* Density-bar wrapper: the 60 stacked bin bars on top, x-axis tick
+   strip underneath so the time scale is readable at a glance. */
+.lg-density-wrap {
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--sw-line);
+  background: var(--sw-bg-1);
+}
 .lg-density {
   display: grid;
   grid-template-columns: repeat(60, 1fr);
   align-items: end;
   gap: 1px;
   height: 60px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--sw-line);
-  background: var(--sw-bg-1);
+  position: relative; /* anchor for the absolute-positioned tooltip */
 }
 .lg-density-bin {
   display: flex;
@@ -1135,8 +1234,62 @@ function jumpToTrace(traceId: string): void {
   background: var(--sw-bg-2);
   border-radius: 1px;
   overflow: hidden;
+  /* No `cursor: help` — the `?` cursor was misread as a UI error.
+     The bin reads as informational (hover surfaces a count tooltip),
+     so a default pointer is the right affordance. */
 }
+.lg-density-bin:hover { outline: 1px solid var(--sw-accent-line); }
 .lg-density-segment { display: block; }
+/* Custom hover tooltip — anchored to the hovered bin via the
+   `left: <bin-center>%` inline style. Wider than a single bin so it
+   doesn't clip; transforms back by 50% to centre on the bin. */
+.lg-density-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  min-width: 160px;
+  padding: 6px 9px;
+  background: var(--sw-bg-0);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 4px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+  font-size: 11px;
+  color: var(--sw-fg-1);
+  pointer-events: none;
+  z-index: 5;
+}
+.lg-density-tip-time { color: var(--sw-fg-3); font-family: var(--sw-mono); font-size: 10px; margin-bottom: 2px; }
+.lg-density-tip-total { color: var(--sw-fg-0); font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+.lg-density-tip-rows { display: flex; flex-direction: column; gap: 2px; }
+.lg-density-tip-row { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; }
+.lg-density-tip-row .lvl-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
+.lg-density-tip-name { color: var(--sw-fg-2); flex: 1; text-transform: capitalize; }
+.lg-density-tip-val { color: var(--sw-fg-0); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* X-axis tick strip — 5 evenly-spaced labels (start / 25% / 50% /
+   75% / end) underneath the bars, in tabular nums so they line up. */
+.lg-density-axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--sw-mono);
+  font-size: 9.5px;
+  color: var(--sw-fg-3);
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+  padding: 0 2px;
+}
+.lg-density-axis .t-tick:first-child { text-align: left; }
+.lg-density-axis .t-tick:last-child { text-align: right; }
+
+/* Row-content hint when the inline preview is suppressed (multi-line,
+   YAML, JSON). Italic gray so it reads as "this is a placeholder, not
+   the actual content". */
+.lg-content-hint {
+  color: var(--sw-fg-3);
+  font-style: italic;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+.lg-row { cursor: pointer; }
 .lg-empty {
   padding: 32px;
   text-align: center;
@@ -1183,6 +1336,36 @@ function jumpToTrace(traceId: string): void {
   font-family: var(--sw-mono);
   font-size: 11px;
   color: var(--sw-fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* Format chip — small uppercase tag rendered before the preview. Per-
+   format color keeps JSON / YAML / TEXT visually distinct without
+   adding chrome. Tabular-nums + monospace so the three chips align. */
+.lg-fmt-chip {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 0 5px;
+  height: 14px;
+  line-height: 14px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-family: var(--sw-mono);
+}
+.lg-fmt-chip.fmt-json { background: var(--sw-info-soft); color: var(--sw-info); }
+.lg-fmt-chip.fmt-yaml { background: rgba(251, 191, 36, 0.18); color: #fbbf24; }
+.lg-fmt-chip.fmt-text { background: var(--sw-bg-3); color: var(--sw-fg-2); }
+.lg-content-body {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

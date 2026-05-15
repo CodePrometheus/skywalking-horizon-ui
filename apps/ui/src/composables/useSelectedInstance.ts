@@ -42,6 +42,8 @@ export function useSelectedInstance() {
   });
 
   function setSelectedInstance(name: string | null): void {
+    const current = typeof route.query.instance === 'string' ? route.query.instance : null;
+    if (name === current) return;
     const next = { ...route.query };
     if (name) next.instance = name;
     else delete next.instance;

@@ -42,8 +42,14 @@ const orderedLayers = useLandingOrder(availableLayers);
  * page (which IS the dashboard for virtual / cache / database / MQ
  * scopes). */
 type SidebarLayer = (typeof orderedLayers.value)[number];
+function hasInstances(L: SidebarLayer): boolean {
+  return L.caps.instances ?? Boolean(L.slots.instances);
+}
+function hasEndpoints(L: SidebarLayer): boolean {
+  return L.caps.endpoints ?? Boolean(L.slots.endpoints);
+}
 function isSingleFeatureLayer(L: SidebarLayer): boolean {
-  if (L.slots.instances || L.slots.endpoints) return false;
+  if (hasInstances(L) || hasEndpoints(L)) return false;
   if (hasTopology(L)) return false;
   const c = L.caps;
   if (c.traces || c.logs || c.traceProfiling || c.ebpfProfiling || c.asyncProfiling || c.events) return false;
@@ -51,20 +57,16 @@ function isSingleFeatureLayer(L: SidebarLayer): boolean {
   return true;
 }
 
-// Default-open the first available layer once data arrives; user clicks
-// thereafter take over.
+// Which layer's row is expanded — the tab strip (Service / Instance /
+// Endpoint / Topology / …) renders only beneath the expanded layer.
+// Auto-driven by the URL: whatever layer the route is on stays
+// expanded so a cold reload of `/layer/<key>/...` shows the tabs +
+// the active tab highlighted. The initial-load watcher only fires
+// when the route ISN'T on a layer page (the top-level / overview) —
+// in that case we pick the first available layer so the sidebar
+// doesn't look closed on first visit.
 const expandedLayer = ref<string | null>(null);
-let userTouched = false;
-watch(
-  orderedLayers,
-  (rows) => {
-    if (userTouched || expandedLayer.value) return;
-    if (rows.length > 0) expandedLayer.value = rows[0].key;
-  },
-  { immediate: true },
-);
 function toggleLayer(key: string): void {
-  userTouched = true;
   expandedLayer.value = expandedLayer.value === key ? null : key;
 }
 
@@ -116,17 +118,35 @@ function isActive(path: string): boolean {
   return route.path === path || route.path.startsWith(path + '/');
 }
 
-// Auto-open the group that contains the active layer so reload-on-URL
-// doesn't hide the user's current location behind a collapsed section.
+// URL-driven sidebar focus. When the route is on a layer page, the
+// containing group expands AND the layer's row expands so the tabs +
+// active-tab highlight are visible. Fires on every route change so
+// deep-linking from outside (bookmark, paste-in) lands the operator
+// with the right rails open. When the route ISN'T on a layer, fall
+// back to the first available layer so the sidebar isn't empty on
+// the overview / setup pages.
 watch(
-  () => route.path,
-  () => {
-    const m = route.path.match(/^\/layer\/([^/]+)/);
-    if (!m) return;
-    const key = m[1];
-    const L = orderedLayers.value.find((l) => l.key === key);
-    if (L?.group && !openGroups.value.has(L.group)) {
-      openGroups.value = new Set([...openGroups.value, L.group]);
+  [() => route.path, orderedLayers],
+  ([path, rows]) => {
+    const m = path.match(/^\/layer\/([^/]+)/);
+    if (m) {
+      const key = m[1];
+      const L = rows.find((l) => l.key === key);
+      if (L) {
+        // Expand this layer's tab strip.
+        expandedLayer.value = key;
+        // Open its parent group if grouped.
+        if (L.group && !openGroups.value.has(L.group)) {
+          openGroups.value = new Set([...openGroups.value, L.group]);
+        }
+      }
+      return;
+    }
+    // No layer in URL — only seed the default expansion if nothing is
+    // currently expanded (don't yank a layer the operator was looking
+    // at on the previous route).
+    if (!expandedLayer.value && rows.length > 0) {
+      expandedLayer.value = rows[0].key;
     }
   },
   { immediate: true },
@@ -291,20 +311,20 @@ const sections: NavSection[] = [
                   <span class="sw-badge" style="margin-left: auto">{{ L.serviceCount }}</span>
                 </RouterLink>
                 <RouterLink
-                  v-if="L.slots.instances"
+                  v-if="hasInstances(L)"
                   :to="`/layer/${L.key}/instance`"
                   class="sw-nav-item"
                   :class="{ 'is-active': isActive(`/layer/${L.key}/instance`) }"
                 >
-                  <Icon name="prof" /><span>{{ L.slots.instances }}</span>
+                  <Icon name="prof" /><span>{{ L.slots.instances ?? 'Instance' }}</span>
                 </RouterLink>
                 <RouterLink
-                  v-if="L.slots.endpoints"
+                  v-if="hasEndpoints(L)"
                   :to="`/layer/${L.key}/endpoint`"
                   class="sw-nav-item"
                   :class="{ 'is-active': isActive(`/layer/${L.key}/endpoint`) }"
                 >
-                  <Icon name="ep" /><span>{{ L.slots.endpoints }}</span>
+                  <Icon name="ep" /><span>{{ L.slots.endpoints ?? 'Endpoint' }}</span>
                 </RouterLink>
                 <RouterLink
                   v-if="hasTopology(L)"
@@ -412,20 +432,20 @@ const sections: NavSection[] = [
             <span class="sw-badge" style="margin-left: auto">{{ E.layer.serviceCount }}</span>
           </RouterLink>
           <RouterLink
-            v-if="E.layer.slots.instances"
+            v-if="hasInstances(E.layer)"
             :to="`/layer/${E.layer.key}/instance`"
             class="sw-nav-item"
             :class="{ 'is-active': isActive(`/layer/${E.layer.key}/instance`) }"
           >
-            <Icon name="prof" /><span>{{ E.layer.slots.instances }}</span>
+            <Icon name="prof" /><span>{{ E.layer.slots.instances ?? 'Instance' }}</span>
           </RouterLink>
           <RouterLink
-            v-if="E.layer.slots.endpoints"
+            v-if="hasEndpoints(E.layer)"
             :to="`/layer/${E.layer.key}/endpoint`"
             class="sw-nav-item"
             :class="{ 'is-active': isActive(`/layer/${E.layer.key}/endpoint`) }"
           >
-            <Icon name="ep" /><span>{{ E.layer.slots.endpoints }}</span>
+            <Icon name="ep" /><span>{{ E.layer.slots.endpoints ?? 'Endpoint' }}</span>
           </RouterLink>
           <RouterLink
             v-if="hasTopology(E.layer)"

@@ -121,13 +121,23 @@ interface OapLogRow {
   tags?: LogKeyValue[] | null;
 }
 
+/**
+ * Resolve a service argument to an OAP service id. The arg can be
+ * either a name (`mesh-svr::songs.sample-services`) or an id
+ * (`bWVzaC1zdnI6OnNvbmdzLnNhbXBsZS1zZXJ2aWNlcw==.1`). OAP ids are
+ * `<base64>.<digits>` — match strictly to avoid the previous bug
+ * where a name containing `.` (e.g. `*.sample-services`) was wrongly
+ * accepted as an id, leading to OAP returning empty / "service not
+ * found" on the log query.
+ */
+const OAP_SERVICE_ID_RE = /^[A-Za-z0-9+/=]+\.\d+$/;
 async function resolveServiceId(
   opts: GraphqlOptions,
   layer: string,
   serviceArg: string,
 ): Promise<string | null> {
   if (!serviceArg) return null;
-  if (serviceArg.includes('.') && !/\s/.test(serviceArg)) return serviceArg;
+  if (OAP_SERVICE_ID_RE.test(serviceArg)) return serviceArg;
   const data = await graphqlPost<{ services: Array<{ id: string; name: string }> }>(
     opts,
     LIST_SERVICES_FOR_RESOLVE,

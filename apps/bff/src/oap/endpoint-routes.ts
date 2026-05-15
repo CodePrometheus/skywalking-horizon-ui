@@ -118,10 +118,11 @@ export function registerEndpointRoute(app: FastifyInstance, deps: EndpointRouteD
       const opts = buildOapOpts(cfgCurrent, deps.fetch);
       const window = defaultWindow();
 
-      // Resolve a plain service name to an OAP id when needed (id-shaped
-      // values contain a `.` separator; names don't).
+      // OAP service-id shape: `<base64>.<digits>`. Anything else
+      // (including names like `mesh-svr::r3-load.sample-services` that
+      // embed `.`) needs a `listServices` lookup.
       let serviceId = serviceArg;
-      if (!serviceArg.includes('.') || /\s/.test(serviceArg)) {
+      if (!/^[A-Za-z0-9+/=]+\.\d+$/.test(serviceArg)) {
         try {
           const data = await graphqlPost<{
             services: Array<{ id: string; name: string; normal?: boolean }>;

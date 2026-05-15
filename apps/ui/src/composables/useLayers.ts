@@ -95,8 +95,8 @@ export function useLayers() {
 export function firstLayerTab(L: LayerDef | undefined): string {
   if (!L) return 'service';
   if (L.slots?.services || L.caps?.dashboards) return 'service';
-  if (L.slots?.instances) return 'instance';
-  if (L.slots?.endpoints) return 'endpoint';
+  if (L.caps?.instances ?? Boolean(L.slots?.instances)) return 'instance';
+  if (L.caps?.endpoints ?? Boolean(L.slots?.endpoints)) return 'endpoint';
   if (L.caps?.serviceMap || L.caps?.instanceTopology || L.caps?.processTopology) return 'topology';
   if (L.caps?.endpointDependency) return 'dependency';
   if (L.caps?.traces) return 'trace';

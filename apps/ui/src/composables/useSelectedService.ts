@@ -38,8 +38,15 @@ export function useSelectedService() {
 
   function setSelected(id: string | null): void {
     const next = { ...route.query };
+    const current = typeof route.query.service === 'string' ? route.query.service : null;
+    if (id === current) return;
     if (id) next.service = id;
     else delete next.service;
+    // Instance / endpoint choices are derived from the selected service.
+    // When the service changes, drop the narrower entity so each
+    // dashboard can auto-pick from the new service's own list.
+    delete next.instance;
+    delete next.endpoint;
     // `replace` instead of `push` — switching services shouldn't bloat
     // the browser back stack with N entries.
     void router.replace({ path: route.path, query: next });

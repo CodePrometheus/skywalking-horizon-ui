@@ -125,10 +125,11 @@ const expandedInstance = ref<string | null>(null);
 const { setSelected: setSelectedService } = useSelectedService();
 const landingRows = computed(() => landing.data.value?.sampledRows ?? landing.rows.value ?? []);
 watch(landingRows, (rows) => {
-  if (selectedId.value) return;
   const first = rows[0];
   if (!first) return;
-  setSelectedService(first.serviceId);
+  if (!selectedId.value || !rows.some((r) => r.serviceId === selectedId.value)) {
+    setSelectedService(first.serviceId);
+  }
 }, { immediate: true });
 // Drop the stale instance whenever the service changes — the new
 // service's instance list almost never matches the previous pick.
@@ -142,7 +143,11 @@ watch(serviceName, (next, prev) => {
 // their URL on every visit).
 watch([instanceList, scope], ([list, s]) => {
   if (s !== 'instance') return;
-  if (!selectedInstance.value && list.length > 0) {
+  if (list.length === 0) {
+    if (selectedInstance.value) setSelectedInstance(null);
+    return;
+  }
+  if (!selectedInstance.value || !list.some((i) => i.name === selectedInstance.value)) {
     setSelectedInstance(list[0].name);
   }
 });

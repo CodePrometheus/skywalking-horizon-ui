@@ -36,6 +36,8 @@ export function useSelectedEndpoint() {
   });
 
   function setSelectedEndpoint(name: string | null): void {
+    const current = typeof route.query.endpoint === 'string' ? route.query.endpoint : null;
+    if (name === current) return;
     const next = { ...route.query };
     if (name) next.endpoint = name;
     else delete next.endpoint;

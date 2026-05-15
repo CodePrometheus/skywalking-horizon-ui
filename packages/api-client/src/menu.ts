@@ -41,6 +41,8 @@ export interface LayerSlots {
 export interface LayerCaps {
   serviceMap?: boolean;
   endpointDependency?: boolean;
+  instances?: boolean;
+  endpoints?: boolean;
   instanceTopology?: boolean;
   processTopology?: boolean;
   dashboards?: boolean;

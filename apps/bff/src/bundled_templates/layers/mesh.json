@@ -233,31 +233,8 @@
           "ms",
           "%"
         ],
-        "span": 6,
-        "rowSpan": 3
-      },
-      {
-        "id": "top_endpoints_in_service",
-        "title": "Top 10 endpoints in service",
-        "tip": "Ranked across the selected service's endpoints.",
-        "type": "top",
-        "expressions": [
-          "top_n(endpoint_cpm,10,des)",
-          "top_n(endpoint_resp_time,10,des)",
-          "top_n(endpoint_sla,10,asc)/100"
-        ],
-        "expressionLabels": [
-          "Traffic",
-          "Slow",
-          "Successful Rate"
-        ],
-        "expressionUnits": [
-          "rpm",
-          "ms",
-          "%"
-        ],
-        "span": 6,
-        "rowSpan": 3
+        "span": 9,
+        "rowSpan": 2
       }
     ],
     "instance": [

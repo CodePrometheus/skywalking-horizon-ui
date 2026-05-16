@@ -134,7 +134,7 @@ interface MqeValuesShape {
   metric?: MqeMetadataShape | null;
   values?: MqeValueShape[];
 }
-interface MqeResultShape {
+export interface MqeResultShape {
   type: string;
   error?: string | null;
   results?: MqeValuesShape[];
@@ -148,7 +148,7 @@ const LIST_FIRST_SERVICE = /* GraphQL */ `
 
 const DEFAULT_WINDOW_MIN = 60;
 
-interface Window {
+export interface Window {
   start: string;
   end: string;
 }
@@ -167,7 +167,18 @@ function defaultWindow(): Window {
   return { start: fmtMinute(start), end: fmtMinute(end) };
 }
 
-function buildFragment(
+/** Build one aliased `execExpression` GraphQL fragment for a single
+ *  widget expression. The entity scope flips based on opts:
+ *    - `layerScope: true` → `{ scope: All }` (no service filter — GLOBAL,
+ *      not layer-restricted; use with care since OAP's Entity has no
+ *      `layer` field, so this leaks across layers if the metric is
+ *      shared between layers)
+ *    - `serviceInstanceName` set → ServiceInstance scope
+ *    - `endpointName` set → Endpoint scope
+ *    - otherwise → Service scope with the supplied serviceName
+ *
+ *  Exported for unit testing (see dashboard.test.ts). */
+export function buildFragment(
   alias: string,
   expression: string,
   serviceName: string,
@@ -175,10 +186,7 @@ function buildFragment(
   w: Window,
   opts: {
     layerScope?: boolean;
-    /** When set, the MQE entity flips to ServiceInstance scope and
-     *  carries the selected instance name. Drives the Instance page. */
     serviceInstanceName?: string | null;
-    /** When set, flips to Endpoint scope with this endpoint name. */
     endpointName?: string | null;
   } = {},
 ): string {
@@ -221,7 +229,7 @@ function buildFragment(
   );
 }
 
-function parseSeries(r: MqeResultShape | undefined): Array<number | null> | null {
+export function parseSeries(r: MqeResultShape | undefined): Array<number | null> | null {
   if (!r || r.error) return null;
   const values = r.results?.[0]?.values ?? [];
   if (values.length === 0) return null;
@@ -231,7 +239,7 @@ function parseSeries(r: MqeResultShape | undefined): Array<number | null> | null
     return Number.isFinite(n) ? n : null;
   });
 }
-function avgOf(series: Array<number | null> | null): number | null {
+export function avgOf(series: Array<number | null> | null): number | null {
   if (!series) return null;
   const xs = series.filter((v): v is number => v !== null);
   if (xs.length === 0) return null;
@@ -249,7 +257,7 @@ function avgOf(series: Array<number | null> | null): number | null {
  * returns the per-bucket timestamp/index as the value id, which is
  * useless as a series label.
  */
-function parseLabeledSeries(
+export function parseLabeledSeries(
   r: MqeResultShape | undefined,
   fallbackLabel: string,
 ): Array<{ label: string; data: Array<number | null> }> | null {
@@ -283,7 +291,7 @@ function parseLabeledSeries(
  *   Service     →  service
  *   fallback    →  raw id
  */
-function parseTopList(
+export function parseTopList(
   r: MqeResultShape | undefined,
 ): Array<{ name: string; value: number | null }> | null {
   if (!r || r.error) return null;

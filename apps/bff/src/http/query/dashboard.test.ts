@@ -1,0 +1,318 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  buildFragment,
+  parseSeries,
+  avgOf,
+  parseLabeledSeries,
+  parseTopList,
+  type Window,
+  type MqeResultShape,
+} from './dashboard.js';
+
+const W: Window = { start: '2026-05-17 1000', end: '2026-05-17 1100' };
+
+/** Extract just the `entity: { ... }` literal from a built fragment.
+ *  Lets assertions target the actual entity-construction logic without
+ *  matching against the trailing GraphQL result-shape block (which
+ *  always names `serviceName / serviceInstanceName / endpointName` as
+ *  field selectors regardless of the entity scope). */
+function entityOf(fragment: string): string {
+  const m = fragment.match(/entity:\s*(\{[^}]*\})/);
+  if (!m) throw new Error(`no entity literal in fragment:\n${fragment}`);
+  return m[1];
+}
+
+describe('buildFragment — entity scope construction', () => {
+  it('default → Service scope with serviceName + normal flag', () => {
+    const entity = entityOf(buildFragment('w0', 'service_cpm', 'frontend', true, W));
+    expect(entity).toContain('scope: Service');
+    expect(entity).toContain('serviceName: "frontend"');
+    expect(entity).toContain('normal: true');
+    expect(entity).not.toContain('serviceInstanceName');
+    expect(entity).not.toContain('endpointName');
+  });
+
+  it('default → serializes normal: false when normal flag is false (VIRTUAL_*, AWS_*)', () => {
+    const entity = entityOf(buildFragment('w0', 'service_cpm', 'mq-broker', false, W));
+    expect(entity).toContain('normal: false');
+  });
+
+  it('serviceInstanceName set → ServiceInstance scope, carries instance name', () => {
+    const entity = entityOf(
+      buildFragment('w0', 'jvm_cpu', 'frontend', true, W, {
+        serviceInstanceName: 'frontend-pod-1',
+      }),
+    );
+    expect(entity).toContain('scope: ServiceInstance');
+    expect(entity).toContain('serviceName: "frontend"');
+    expect(entity).toContain('serviceInstanceName: "frontend-pod-1"');
+    expect(entity).not.toContain('endpointName');
+  });
+
+  it('endpointName set → Endpoint scope', () => {
+    const entity = entityOf(
+      buildFragment('w0', 'endpoint_cpm', 'frontend', true, W, {
+        endpointName: '/api/order',
+      }),
+    );
+    expect(entity).toContain('scope: Endpoint');
+    expect(entity).toContain('endpointName: "/api/order"');
+    expect(entity).not.toContain('serviceInstanceName');
+  });
+
+  it('layerScope:true → {scope: All}, no serviceName / normal / instance / endpoint in entity', () => {
+    const entity = entityOf(
+      buildFragment('w0', 'top_n(endpoint_cpm,20,des)', 'frontend', true, W, {
+        layerScope: true,
+      }),
+    );
+    expect(entity).toContain('scope: All');
+    expect(entity).not.toContain('serviceName');
+    expect(entity).not.toContain('serviceInstanceName');
+    expect(entity).not.toContain('endpointName');
+    expect(entity).not.toContain('normal:');
+  });
+
+  it('layerScope:true wins over both serviceInstanceName AND endpointName', () => {
+    // Defensive: if a caller sets layerScope:true AND instance/endpoint,
+    // we should still produce All scope (layerScope is the explicit
+    // opt-out from per-entity filtering).
+    const entity = entityOf(
+      buildFragment('w0', 'endpoint_cpm', 'frontend', true, W, {
+        layerScope: true,
+        serviceInstanceName: 'should-be-ignored',
+        endpointName: '/should/be/ignored',
+      }),
+    );
+    expect(entity).toContain('scope: All');
+    expect(entity).not.toContain('should-be-ignored');
+    expect(entity).not.toContain('/should/be/ignored');
+  });
+
+  it('serviceInstanceName takes precedence over endpointName when both set', () => {
+    const entity = entityOf(
+      buildFragment('w0', 'm', 'svc', true, W, {
+        serviceInstanceName: 'inst',
+        endpointName: '/ep',
+      }),
+    );
+    expect(entity).toContain('scope: ServiceInstance');
+    expect(entity).not.toContain('scope: Endpoint');
+    expect(entity).not.toContain('/ep');
+  });
+
+  it('JSON-stringifies values containing OAP special characters (::, /, quotes)', () => {
+    const entity = entityOf(
+      buildFragment('w0', 'm', 'mesh-svr::reviews', true, W, {
+        endpointName: '/api/"order"',
+      }),
+    );
+    expect(entity).toContain('serviceName: "mesh-svr::reviews"');
+    expect(entity).toContain('endpointName: "/api/\\"order\\""');
+  });
+
+  it('alias + expression + duration window land in the output', () => {
+    const frag = buildFragment('w7', 'service_cpm', 'frontend', true, {
+      start: '2026-05-17 1000',
+      end: '2026-05-17 1100',
+    });
+    expect(frag.trimStart().startsWith('w7: execExpression(')).toBe(true);
+    expect(frag).toContain('expression: "service_cpm"');
+    expect(frag).toContain('start: "2026-05-17 1000"');
+    expect(frag).toContain('end: "2026-05-17 1100"');
+    expect(frag).toContain('step: MINUTE');
+  });
+
+  it('result block requests metric.labels + owner fields (TopList / relabels support)', () => {
+    const frag = buildFragment('w0', 'm', 'svc', true, W);
+    expect(frag).toContain('metric { labels { key value } }');
+    expect(frag).toContain('owner { scope serviceName serviceInstanceName endpointName }');
+  });
+});
+
+describe('parseSeries — single-series numeric extraction', () => {
+  it('returns null for an undefined / errored result', () => {
+    expect(parseSeries(undefined)).toBeNull();
+    expect(parseSeries({ type: 'TIME_SERIES_VALUES', error: 'boom' })).toBeNull();
+  });
+
+  it('returns null when results / values are missing or empty', () => {
+    expect(parseSeries({ type: 'TIME_SERIES_VALUES' })).toBeNull();
+    expect(parseSeries({ type: 'TIME_SERIES_VALUES', results: [] })).toBeNull();
+    expect(
+      parseSeries({ type: 'TIME_SERIES_VALUES', results: [{ values: [] }] }),
+    ).toBeNull();
+  });
+
+  it('maps string values to numbers, preserves null gaps', () => {
+    const r: MqeResultShape = {
+      type: 'TIME_SERIES_VALUES',
+      results: [
+        {
+          values: [
+            { value: '10' },
+            { value: null },
+            { value: '3.14' },
+            { value: undefined },
+            { value: 'not-a-number' },
+          ],
+        },
+      ],
+    };
+    expect(parseSeries(r)).toEqual([10, null, 3.14, null, null]);
+  });
+});
+
+describe('avgOf — mean over a possibly-sparse series', () => {
+  it('returns null on null input', () => {
+    expect(avgOf(null)).toBeNull();
+  });
+  it('returns null on a fully-null series', () => {
+    expect(avgOf([null, null, null])).toBeNull();
+  });
+  it('averages only the non-null values', () => {
+    expect(avgOf([10, null, 20, null, 30])).toBe(20);
+  });
+  it('handles a single value', () => {
+    expect(avgOf([42])).toBe(42);
+  });
+});
+
+describe('parseLabeledSeries — relabels() multi-result extraction', () => {
+  it('falls back to the supplied label when metric.labels is empty', () => {
+    const r: MqeResultShape = {
+      type: 'TIME_SERIES_VALUES',
+      results: [{ values: [{ value: '1' }, { value: '2' }] }],
+    };
+    expect(parseLabeledSeries(r, 'service_cpm')).toEqual([
+      { label: 'service_cpm', data: [1, 2] },
+    ]);
+  });
+
+  it('reads the LAST label.value when metric.labels is set (most-derived label, e.g. percentile=99)', () => {
+    const r: MqeResultShape = {
+      type: 'TIME_SERIES_VALUES',
+      results: [
+        {
+          metric: {
+            labels: [
+              { key: 'p', value: '99' },
+              { key: 'percentile', value: '99' },
+            ],
+          },
+          values: [{ value: '12' }],
+        },
+      ],
+    };
+    expect(parseLabeledSeries(r, 'fallback')).toEqual([{ label: '99', data: [12] }]);
+  });
+
+  it('returns null on error / empty / no values', () => {
+    expect(parseLabeledSeries(undefined, 'x')).toBeNull();
+    expect(parseLabeledSeries({ type: 'X', error: 'boom' }, 'x')).toBeNull();
+    expect(parseLabeledSeries({ type: 'X', results: [{ values: [] }] }, 'x')).toBeNull();
+  });
+});
+
+describe('parseTopList — owner-scope priority for display names', () => {
+  it('endpoint owner → "service · endpoint"', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [
+        {
+          values: [
+            {
+              value: '100',
+              owner: { scope: 'Endpoint', serviceName: 'frontend', endpointName: '/api/order' },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseTopList(r)).toEqual([{ name: 'frontend · /api/order', value: 100 }]);
+  });
+
+  it('endpoint owner without serviceName → endpoint alone', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [
+        {
+          values: [{ value: '5', owner: { scope: 'Endpoint', endpointName: '/loose' } }],
+        },
+      ],
+    };
+    expect(parseTopList(r)).toEqual([{ name: '/loose', value: 5 }]);
+  });
+
+  it('instance owner → "service · instance"', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [
+        {
+          values: [
+            {
+              value: '7',
+              owner: { scope: 'ServiceInstance', serviceName: 'svc-a', serviceInstanceName: 'pod-1' },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseTopList(r)).toEqual([{ name: 'svc-a · pod-1', value: 7 }]);
+  });
+
+  it('service-only owner → service name', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [{ values: [{ value: '3', owner: { scope: 'Service', serviceName: 'frontend' } }] }],
+    };
+    expect(parseTopList(r)).toEqual([{ name: 'frontend', value: 3 }]);
+  });
+
+  it('no owner but value.id present → falls back to id', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [{ values: [{ id: 'fallback-id', value: '9' }] }],
+    };
+    expect(parseTopList(r)).toEqual([{ name: 'fallback-id', value: 9 }]);
+  });
+
+  it('no owner, no id → em-dash placeholder', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [{ values: [{ value: '1' }] }],
+    };
+    expect(parseTopList(r)).toEqual([{ name: '—', value: 1 }]);
+  });
+
+  it('non-numeric value collapses to null in the rendered list', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [{ values: [{ value: 'NaN', owner: { serviceName: 'svc' } }] }],
+    };
+    expect(parseTopList(r)).toEqual([{ name: 'svc', value: null }]);
+  });
+
+  it('null / errored / empty result → null', () => {
+    expect(parseTopList(undefined)).toBeNull();
+    expect(parseTopList({ type: 'X', error: 'boom' })).toBeNull();
+    expect(parseTopList({ type: 'X', results: [{ values: [] }] })).toBeNull();
+  });
+});

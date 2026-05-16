@@ -19,9 +19,9 @@ import { createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 
 import App from './App.vue';
-import router from './router';
+import router from './shell/router/index';
 import { bffClient } from './api/client';
-import { useAuthStore } from './stores/auth';
+import { useAuthStore } from './state/auth';
 
 import '@skywalking-horizon-ui/design-tokens/tokens.css';
 import './assets/styles/global.css';

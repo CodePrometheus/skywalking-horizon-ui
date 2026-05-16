@@ -74,14 +74,16 @@ Design tokens have been lifted into the runtime token CSS — that copy is canon
   - `util/` — pure helpers used anywhere (time formatting, MQE target/catalog cache, trace-protocol cache).
   - `user/` + `rbac/` — session/auth + verb policy, enforced at the http edge.
   Don't import `client/` from `http/` directly; route through `logic/` so the orchestration layer stays the seam.
-- **Layering — UI.** `apps/ui/src/` follows the same role-based grouping. When adding code, decide which layer it belongs in *before* picking a file name. A file mixing two layers means it should be split.
-  - **Shell / framework** — `components/shell/`, `router/`, `App.vue`. Chrome that every page lives inside (sidebar, topbar, breadcrumbs, layer-tab strip). Knows about layers and routes, never about specific feature data.
-  - **Cross-cutting state** — `stores/timeRange.ts`, the auto-refresh ticker, `stores/auth.ts`, `composables/useClientId.ts`. Lives above pages; pages subscribe, never own.
-  - **API client** — `apps/ui/src/api/`. Façade `bff.<scope>.<method>()` is the only path to the BFF; no `fetch()` calls anywhere else.
-  - **Composables** — `composables/`. Reactive data fetchers + business state (one composable per query family); pages compose them rather than inlining `useQuery` inside a view.
-  - **Static feature pages** — `views/operate/{inspect,dsl,live-debug}/`, `views/alarms/`, `views/auth/`, `views/setup/`. Bespoke layouts (not template-driven). Own their page-local components but reuse primitives + charts.
-  - **Configurable render** — `views/overview/`, `views/layer/Layer*View.vue` widget grids. Layout + widget set come from JSON templates served by the BFF; the page is a generic renderer driven by config. New dashboards mean new templates, not new Vue files.
-  - **Primitives + shared visuals** — `components/primitives/`, `components/charts/`, `components/icons/`. Stateless, no business logic. If a primitive needs feature data, it's in the wrong layer.
+- **Layering — UI.** `apps/ui/src/` follows the same role-based grouping. The guiding rule is **feature code stays cohesive with its feature; shared code is feature-AGNOSTIC only** (fonts, styles, formatters, generic primitives, charts wrappers). A component or composable that knows about a feature's data lives WITH the feature, not in a shared pile. Features don't import from each other.
+  - **`api/`** — façade `bff.<scope>.<method>()` over the BFF. Only path to HTTP; no `fetch()` calls anywhere else.
+  - **`shell/`** — chrome every page lives in (AppShell / AppSidebar / AppTopbar / GlobalConnectivityBanner / AdminFeatureWarning / PlaceholderView / LandingView), plus `router/index.ts` and the framework-level composables the sidebar/topbar need (`useLayers`, `useLandingOrder`, `useOapInfo`, `useAdminFeatures`). Knows about layers + routes, never about specific feature data.
+  - **`controls/`** — cross-cutting controls owned by the topbar / shell. The time-range store, the auto-refresh ticker + its subscriber, the per-session client id. Pages subscribe, never own.
+  - **`state/`** — global app state (`auth`, `setup`). Pinia stores that survive route changes.
+  - **`features/<feature>/`** — static feature pages. Each folder is fully self-contained: its views, its composables, its feature-specific components. Operate sub-features (`cluster/`, `inspect/`, `dsl/`, `live-debug/`) share their cross-cutting bits via `features/operate/_shared/` (Modal / MonacoYaml / MonacoDiff / RuleCard / DestructiveConfirm / grouping).
+  - **`layer/<tab>/`** — the per-layer drill-down stack. Top-level files are the shell (`LayerShell`, `LayerServiceSelector`, `LayerTabPlaceholder`) plus shared layer composables (`useLayerLanding`, `useLayerEndpoints`, `useLayerInstances`, `useSelectedService/Instance/Endpoint`). Each tab subfolder owns its view + composables + tab-specific components (e.g. `layer/traces/` contains `LayerTracesView.vue` + `NativeTraceWaterfall.vue` + `TracePopout.vue` + `useLayerTraces.ts`).
+  - **`render/`** — template-driven render. `render/overview/` and `render/layer-dashboard/` are generic renderers driven by JSON templates from the BFF; `render/widgets/` holds the reusable widget primitives (AlarmsWidget, MetricWidget, ServiceCountWidget, …). New dashboards mean new templates, not new Vue files.
+  - **`components/{primitives,charts,icons}/`** — feature-agnostic shared building blocks. Stateless, no business logic. If a component starts needing feature data, move it INTO the feature; don't enrich the shared pile.
+  - **`monaco/`, `utils/`, `assets/`** — same shared-is-feature-agnostic rule: editor setup, formatters, stylesheets, icon SVGs. New helpers land here only if more than one feature needs them and they don't carry feature semantics.
 
 ## Commits & PRs
 

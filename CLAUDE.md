@@ -67,6 +67,21 @@ Design tokens have been lifted into the runtime token CSS — that copy is canon
 - **MQE is a core capability**, not a config-screen afterthought. User-editable, syntax-highlighted, debuggable.
 - **Admin views use the same look.** LDAP/RBAC/admin are dark, dense, design-tokens — not a separate "settings" UI. Alarms are read-only on the UI side; recovery is backend-automatic (no acknowledge/close/silence actions).
 - **Comments earn their keep.** Only write a comment when it does one of two things: (1) introduces an API — what a module / component / exported function is for and how callers should think about it; (2) highlights a non-obvious gotcha — a hidden invariant, a workaround for a specific upstream quirk, a subtle scope/timing constraint. Do **not** write comments that paraphrase the code (`// loop over layers`, `// click handler — toggles open state`, `// returns true when active`). Do **not** leave history-as-comments (`// previously …`, `// moved from …`, `// see commit …`) — that belongs in `git log`. If removing the comment wouldn't confuse a future reader who knows the project, the comment shouldn't be there.
+- **Layering — BFF.** `apps/bff/src/` is grouped by role, and the flow is one-directional: `http → logic → client → OAP`.
+  - `http/{query,config,admin}/` — Fastify route handlers only. Thin: parse, dispatch to logic, shape the reply. No OAP I/O directly.
+  - `logic/<domain>/` — domain orchestration + background timers (alarms store, layer/overview/setup loaders, preflight status check, inspect parsers, dashboard defaults). No HTTP framework, no OAP fetch detail.
+  - `client/` — the only place that talks to OAP (GraphQL + admin REST + Zipkin + cluster fan-out). Wrap upstream errors into typed envelopes here.
+  - `util/` — pure helpers used anywhere (time formatting, MQE target/catalog cache, trace-protocol cache).
+  - `user/` + `rbac/` — session/auth + verb policy, enforced at the http edge.
+  Don't import `client/` from `http/` directly; route through `logic/` so the orchestration layer stays the seam.
+- **Layering — UI.** `apps/ui/src/` follows the same role-based grouping. When adding code, decide which layer it belongs in *before* picking a file name. A file mixing two layers means it should be split.
+  - **Shell / framework** — `components/shell/`, `router/`, `App.vue`. Chrome that every page lives inside (sidebar, topbar, breadcrumbs, layer-tab strip). Knows about layers and routes, never about specific feature data.
+  - **Cross-cutting state** — `stores/timeRange.ts`, the auto-refresh ticker, `stores/auth.ts`, `composables/useClientId.ts`. Lives above pages; pages subscribe, never own.
+  - **API client** — `apps/ui/src/api/`. Façade `bff.<scope>.<method>()` is the only path to the BFF; no `fetch()` calls anywhere else.
+  - **Composables** — `composables/`. Reactive data fetchers + business state (one composable per query family); pages compose them rather than inlining `useQuery` inside a view.
+  - **Static feature pages** — `views/operate/{inspect,dsl,live-debug}/`, `views/alarms/`, `views/auth/`, `views/setup/`. Bespoke layouts (not template-driven). Own their page-local components but reuse primitives + charts.
+  - **Configurable render** — `views/overview/`, `views/layer/Layer*View.vue` widget grids. Layout + widget set come from JSON templates served by the BFF; the page is a generic renderer driven by config. New dashboards mean new templates, not new Vue files.
+  - **Primitives + shared visuals** — `components/primitives/`, `components/charts/`, `components/icons/`. Stateless, no business logic. If a primitive needs feature data, it's in the wrong layer.
 
 ## Commits & PRs
 

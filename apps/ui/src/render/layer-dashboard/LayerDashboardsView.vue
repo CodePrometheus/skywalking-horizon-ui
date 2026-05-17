@@ -37,6 +37,7 @@ import { useLayerPageOrchestrator } from '@/render/layer-dashboard/useLayerPageO
 import { useLayerEndpoints } from '@/layer/useLayerEndpoints';
 import { useLayerInstances } from '@/layer/useLayerInstances';
 import { useLayerLanding } from '@/layer/useLayerLanding';
+import { useTimeRangeStore } from '@/controls/timeRange';
 import { useLayers } from '@/shell/useLayers';
 import { useSelectedEndpoint } from '@/layer/useSelectedEndpoint';
 import { useSelectedInstance } from '@/layer/useSelectedInstance';
@@ -82,7 +83,16 @@ const safeCfg = computed(() => {
   if (!layer.value) return { priority: 99, topN: 5, orderBy: 'cpm', columns: [], style: 'table' as const };
   return store.ensure(layer.value.key, { slots: layer.value.slots, caps: layer.value.caps, metrics: layer.value.metrics, overview: layer.value.overview }).landing;
 });
-const landing = useLayerLanding(safeLayer, safeCfg);
+// Global time-range — picker change refires the landing rollup
+// AND the widget batch via queryKey. Each downstream control
+// listens to its upstream picker the same way it listens to
+// service/instance/endpoint changes.
+const timeRange = useTimeRangeStore();
+const rangeRef = computed(() => {
+  const r = timeRange.range;
+  return { step: timeRange.step, startMs: r.startMs, endMs: r.endMs };
+});
+const landing = useLayerLanding(safeLayer, safeCfg, rangeRef);
 const serviceName = computed<string | null>(() => {
   const rows = landing.data.value?.sampledRows ?? landing.rows.value ?? [];
   const match = rows.find((r) => r.serviceId === selectedId.value);
@@ -235,6 +245,7 @@ const { data, isFetching, error } = useLayerDashboard(
   scope,
   mockTop,
   { instance: selectedInstance, endpoint: selectedEndpoint },
+  rangeRef,
 );
 
 // Sequential page-init events for the EventTicker — config →

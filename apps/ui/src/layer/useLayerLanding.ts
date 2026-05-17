@@ -30,9 +30,19 @@ import { bffClient } from '@/api/client';
  * The query key includes the resolved column set so changing a layer's
  * setup (in Stage 2.3+) re-fetches automatically.
  */
+export interface LandingRange {
+  step: 'MINUTE' | 'HOUR' | 'DAY';
+  startMs: number;
+  endMs: number;
+}
+
 export function useLayerLanding(
   layer: Ref<LayerDef>,
   cfg: Ref<LandingConfig>,
+  /** Optional global time-range ref. Threaded into the BFF body
+   *  + queryKey so a time-picker change refires the landing
+   *  rollup the same way a layer change does. */
+  range?: Ref<LandingRange | null>,
 ) {
   const layerKey = computed(() => layer.value.key);
   // Cache key reflects every field that changes the server response —
@@ -45,10 +55,21 @@ export function useLayerLanding(
     spark: cfg.value.spark,
     throughput: cfg.value.throughput,
   }));
+  const rangeRef = range ?? computed<LandingRange | null>(() => null);
+  const rangeKey = computed(() => {
+    const r = rangeRef.value;
+    if (!r) return null;
+    return `${r.step}:${Math.floor(r.startMs / 60_000)}:${Math.floor(r.endMs / 60_000)}`;
+  });
 
   const q = useQuery({
-    queryKey: ['layer-landing', layerKey, cfgHash],
-    queryFn: () => bffClient.layer.landing(layerKey.value, cfg.value),
+    queryKey: ['layer-landing', layerKey, cfgHash, rangeKey],
+    queryFn: () =>
+      bffClient.layer.landing(
+        layerKey.value,
+        cfg.value,
+        rangeRef.value ?? undefined,
+      ),
     staleTime: 45_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,

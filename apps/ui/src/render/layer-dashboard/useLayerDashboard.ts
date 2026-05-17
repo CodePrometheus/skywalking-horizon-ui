@@ -76,6 +76,12 @@ export interface DashboardEntityRefs {
   endpoint?: Ref<string | null>;
 }
 
+export interface DashboardRange {
+  step: 'MINUTE' | 'HOUR' | 'DAY';
+  startMs: number;
+  endMs: number;
+}
+
 export function useLayerDashboard(
   layerKey: Ref<string>,
   service: Ref<string | null>,
@@ -88,6 +94,11 @@ export function useLayerDashboard(
    *  ref keeps the query key cache-aware so switching instances on
    *  the same service re-fetches. */
   entityRefs: DashboardEntityRefs = {},
+  /** Global time-range ref (start/end ms + step). When omitted the
+   *  BFF picks a default window. Threaded into the queryKey so a
+   *  time-picker change refires the widget batch the same way a
+   *  service/instance pick does. */
+  range?: Ref<DashboardRange | null>,
 ) {
   // Auto-refresh is metrics-only. Trace / log / profiling pages are
   // explore-style (operator-driven queries, log tails, etc.) and would
@@ -99,6 +110,17 @@ export function useLayerDashboard(
     const s = scope?.value ?? 'service';
     return METRIC_SCOPES.has(s) ? 30_000 : false;
   });
+  const rangeRef = range ?? computed<DashboardRange | null>(() => null);
+  // Bucket the range into a stable key fragment — millisecond
+  // precision in the key would invalidate the cache on every paint
+  // for rolling presets. Step + 60s buckets are precise enough for
+  // dashboard refreshes and keep the cache useful across closely-
+  // spaced operator interactions.
+  const rangeKey = computed(() => {
+    const r = rangeRef.value;
+    if (!r) return null;
+    return `${r.step}:${Math.floor(r.startMs / 60_000)}:${Math.floor(r.endMs / 60_000)}`;
+  });
   const q = useQuery({
     queryKey: [
       'dashboard',
@@ -108,6 +130,7 @@ export function useLayerDashboard(
       mockTop ?? computed(() => 0),
       entityRefs.instance ?? computed(() => null),
       entityRefs.endpoint ?? computed(() => null),
+      rangeKey,
     ],
     queryFn: () =>
       bffClient.layer.dashboard(
@@ -117,6 +140,13 @@ export function useLayerDashboard(
           ...(scope?.value ? { scope: scope.value } : {}),
           ...(entityRefs.instance?.value ? { serviceInstance: entityRefs.instance.value } : {}),
           ...(entityRefs.endpoint?.value ? { endpoint: entityRefs.endpoint.value } : {}),
+          ...(rangeRef.value
+            ? {
+                step: rangeRef.value.step,
+                startMs: rangeRef.value.startMs,
+                endMs: rangeRef.value.endMs,
+              }
+            : {}),
         },
         mockTop?.value ? { mockTop: mockTop.value } : {},
       ),

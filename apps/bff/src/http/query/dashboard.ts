@@ -146,6 +146,27 @@ const LIST_FIRST_SERVICE = /* GraphQL */ `
   }
 `;
 
+/** Auto-pick a default instance/endpoint when the caller asks for the
+ *  matching scope but doesn't carry an explicit `serviceInstance` /
+ *  `endpoint` body field. Without this the dashboard fires with a
+ *  Service-scope entity and every ServiceInstance / Endpoint metric
+ *  (so11y_* meters, envoy_cluster_*, JVM metrics, endpoint_cpm, …)
+ *  returns "no data" on first paint. */
+const LIST_FIRST_INSTANCE = /* GraphQL */ `
+  query FirstInstance($serviceId: ID!, $duration: Duration!) {
+    instances: listInstances(serviceId: $serviceId, duration: $duration) {
+      id name
+    }
+  }
+`;
+const FIND_FIRST_ENDPOINT = /* GraphQL */ `
+  query FirstEndpoint($serviceId: ID!, $duration: Duration!) {
+    endpoints: findEndpoint(serviceId: $serviceId, keyword: "", limit: 1, duration: $duration) {
+      id name
+    }
+  }
+`;
+
 const DEFAULT_WINDOW_MIN = 60;
 
 export interface Window {
@@ -342,6 +363,7 @@ export function registerDashboardQueryRoute(app: FastifyInstance, deps: Dashboar
         parsed.data.widgets ??
         (tpl ? widgetsForScope(tpl, scope) : defaultWidgetsFor(layerKey));
       let serviceName = parsed.data.service ?? '';
+      let serviceId = '';
       let normal = true;
       const cfgCurrent = deps.config.current;
       const opts = buildOapOpts(cfgCurrent, deps.fetch);
@@ -391,6 +413,7 @@ export function registerDashboardQueryRoute(app: FastifyInstance, deps: Dashboar
           }
         }
         serviceName = picked.name;
+        serviceId = picked.id;
         normal = picked.normal !== false;
         baseResp.service = serviceName;
       } catch (err) {
@@ -402,6 +425,46 @@ export function registerDashboardQueryRoute(app: FastifyInstance, deps: Dashboar
         });
       }
 
+      // Step 1b — auto-pick instance/endpoint when scope requires one
+      // but the caller didn't pass one. Without this, the first paint
+      // on /instance or /endpoint fires Service-scope queries against
+      // ServiceInstance / Endpoint-scope metrics and every widget
+      // shows "no data" until the UI's instance/endpoint picker
+      // resolves and the dashboard re-fires. Symmetric to the
+      // listServices auto-pick above.
+      let selectedInstance: string | null = parsed.data.serviceInstance ?? null;
+      let selectedEndpoint: string | null = parsed.data.endpoint ?? null;
+      if (scope === 'instance' && !selectedInstance && serviceId) {
+        try {
+          const data = await graphqlPost<{ instances: Array<{ id: string; name: string }> }>(
+            opts,
+            LIST_FIRST_INSTANCE,
+            {
+              serviceId,
+              duration: { start: window.start, end: window.end, step: 'MINUTE' },
+            },
+          );
+          selectedInstance = data.instances?.[0]?.name ?? null;
+        } catch {
+          /* leave selectedInstance null — widgets surface "no data" */
+        }
+      }
+      if (scope === 'endpoint' && !selectedEndpoint && serviceId) {
+        try {
+          const data = await graphqlPost<{ endpoints: Array<{ id: string; name: string }> }>(
+            opts,
+            FIND_FIRST_ENDPOINT,
+            {
+              serviceId,
+              duration: { start: window.start, end: window.end, step: 'MINUTE' },
+            },
+          );
+          selectedEndpoint = data.endpoints?.[0]?.name ?? null;
+        } catch {
+          /* leave selectedEndpoint null — widgets surface "no data" */
+        }
+      }
+
       // Step 2 — batch all widget × expression queries into one GraphQL trip.
       const fragments: string[] = [];
       const aliasMap = new Map<string, { wIdx: number; eIdx: number }>();
@@ -411,8 +474,6 @@ export function registerDashboardQueryRoute(app: FastifyInstance, deps: Dashboar
       // both (they ignore the selected entity by design — they're
       // layer-wide rollups). When neither override applies, we keep
       // the legacy Service-scope behavior.
-      const selectedInstance = parsed.data.serviceInstance ?? null;
-      const selectedEndpoint = parsed.data.endpoint ?? null;
       const scopeHonorsInstance = scope === 'instance';
       const scopeHonorsEndpoint = scope === 'endpoint';
       widgets.forEach((widget, wIdx) => {

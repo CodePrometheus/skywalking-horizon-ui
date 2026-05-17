@@ -284,12 +284,31 @@ watch(serviceName, (next, prev) => {
 // `watchEffect` above so the service → endpoint sequence is
 // deterministic; no separate watch needed here.
 
+// Resolved entity, fed to the widget batch. Only non-null AFTER
+// the list has arrived AND the selection is verified to exist in
+// it — covers both:
+//   - URL pick matches a real list entry  ⇒ use it
+//   - URL pick doesn't match              ⇒ stay null while the
+//     auto-pick/fallback watch above swaps selectedInstance to
+//     list[0], which then flips this computed to the new value
+// While the list is loading (length 0) the entity is null too, so
+// the dashboard stays gated. No wasted "wrong-id then fixed" round-trip.
+const effectiveInstance = computed<string | null>(() => {
+  const v = selectedInstance.value;
+  if (!v) return null;
+  return instanceList.value.some((i) => i.name === v) ? v : null;
+});
+const effectiveEndpoint = computed<string | null>(() => {
+  const v = selectedEndpoint.value;
+  if (!v) return null;
+  return endpointList.value.some((e) => e.name === v) ? v : null;
+});
 const { data, isFetching, error } = useLayerDashboard(
   layerKey,
   serviceName,
   scope,
   mockTop,
-  { instance: selectedInstance, endpoint: selectedEndpoint },
+  { instance: effectiveInstance, endpoint: effectiveEndpoint },
   rangeRef,
 );
 

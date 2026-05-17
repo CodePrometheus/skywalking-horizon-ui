@@ -172,10 +172,15 @@ watch(serviceName, (next, prev) => {
 // the pick when the list arrived synchronously.
 watch([instanceList, scope], ([list, s]) => {
   if (s !== 'instance') return;
-  if (list.length === 0) {
-    if (selectedInstance.value) setSelectedInstance(null);
-    return;
-  }
+  // Don't clear the URL ?instance= when the list is TEMPORARILY
+  // empty (e.g. service just changed and the instance query is
+  // re-firing) — clearing causes a visible URL bounce that
+  // strips the operator's pick and breaks dashboard.enabled. We
+  // simply wait for actual instance data; if the list eventually
+  // resolves to truly empty (instancesLoading false + length 0),
+  // the picker's own empty state handles it and the dashboard
+  // gate keeps the widget batch quiet.
+  if (list.length === 0) return;
   if (!selectedInstance.value || !list.some((i) => i.name === selectedInstance.value)) {
     setSelectedInstance(list[0].name);
   }
@@ -537,15 +542,19 @@ function isVisible(
     <div v-else-if="widgets.length === 0" class="empty">
       No widgets defined for this layer. Phase 7 admin will let operators add their own.
     </div>
-    <!-- Single page-level loading state while the widget batch is
-         in flight without a prior result. Replaces the per-widget
-         "loading…" cards from f9866cf — the dashboard query is
-         batched so the widgets all land together; one indicator is
-         cleaner than N. Once the result is in `data`, the grid
-         takes over and shows each widget's value / no-data / error
-         normally. Background refetches (auto-refresh) keep showing
-         the prior data, no flash. -->
-    <div v-else-if="isFetching && data === null" class="empty reading">
+    <!-- Single page-level loading state while we don't yet have
+         widget data to render. Covers the whole upstream wait,
+         not just the dashboard fetch:
+           - landing query in flight (serviceName unresolved →
+             dashboard.enabled still false, isFetching=false,
+             but we're still loading)
+           - dashboard query in flight
+         The widget batch is server-side batched so widgets all
+         land together; one indicator is cleaner than N "loading…"
+         cards. Once `data` arrives, the grid takes over and shows
+         each widget's value / no-data / error normally. Background
+         refetches keep showing the prior data, no flash. -->
+    <div v-else-if="data === null && reachable" class="empty reading">
       <span class="reading-dot" /> Reading data…
     </div>
     <div v-else class="grid">

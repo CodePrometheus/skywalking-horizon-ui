@@ -586,21 +586,16 @@ function isVisible(
     </section>
 
     <div v-if="configLoading" class="empty">Loading dashboard config…</div>
-    <div
-      v-else-if="scope === 'endpoint' && serviceName && !selectedEndpoint"
-      class="empty"
-    >
-      Select an endpoint above to view its metrics.
-    </div>
-    <div
-      v-else-if="scope === 'instance' && serviceName && !selectedInstance"
-      class="empty"
-    >
-      Select an instance above to view its metrics.
-    </div>
     <div v-else-if="widgets.length === 0" class="empty">
       No widgets defined for this layer. Phase 7 admin will let operators add their own.
     </div>
+    <!-- The previous "Select an instance/endpoint above to view its
+         metrics" branches implied operator action was needed and
+         masked the (already-running) auto-pick — which made every
+         service click feel frozen for a beat before the cascade
+         visibly resumed. The picker handles its own empty state;
+         the "Reading data…" gate below covers the upstream wait. -->
+
     <!-- Single page-level loading state while we don't yet have
          widget data to render. Covers the whole upstream wait,
          not just the dashboard fetch:

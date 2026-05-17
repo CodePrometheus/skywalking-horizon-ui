@@ -465,45 +465,65 @@ export function registerDashboardQueryRoute(app: FastifyInstance, deps: Dashboar
         }
       }
 
-      // Step 2 — batch all widget × expression queries into one GraphQL trip.
-      const fragments: string[] = [];
+      // Step 2 — batch widget × expression queries via aliased
+      // `execExpression(...)` fragments. Mirrors booster-ui's
+      // `useExpressionsProcessor.fetchMetrics`: chunk widgets into
+      // groups of 6 and fire each chunk as a separate GraphQL trip
+      // in parallel. The OAP GraphQL server has per-request complexity
+      // / depth limits (booster pins it at 6 widgets per trip) and
+      // huge dashboards (10+ widgets × multiple expressions each)
+      // would otherwise blow past the threshold and 5xx the whole
+      // batch — losing every cell instead of degrading per chunk.
+      // Chunked + Promise.all keeps the wall-clock close to a single
+      // round-trip while staying inside OAP's per-query budget.
+      const MAX_WIDGETS_PER_BATCH = 6;
       const aliasMap = new Map<string, { wIdx: number; eIdx: number }>();
-      // Per-widget scope plumbing: an instance-scoped page passes
-      // `serviceInstance` in the body; an endpoint page passes
-      // `endpoint`. Widgets that opt into `layerScope` always win over
-      // both (they ignore the selected entity by design — they're
-      // layer-wide rollups). When neither override applies, we keep
-      // the legacy Service-scope behavior.
       const scopeHonorsInstance = scope === 'instance';
       const scopeHonorsEndpoint = scope === 'endpoint';
-      widgets.forEach((widget, wIdx) => {
-        widget.expressions.forEach((expr, eIdx) => {
-          const alias = `w${wIdx}_e${eIdx}`;
-          aliasMap.set(alias, { wIdx, eIdx });
-          fragments.push(
-            buildFragment(alias, expr, serviceName, normal, window, {
-              layerScope: widget.layerScope === true,
-              serviceInstanceName:
-                widget.layerScope !== true && scopeHonorsInstance ? selectedInstance : null,
-              endpointName:
-                widget.layerScope !== true && scopeHonorsEndpoint ? selectedEndpoint : null,
-            }),
-          );
-        });
-      });
+      const widgetChunks: { widget: DashboardWidget; wIdx: number }[][] = [];
+      for (let i = 0; i < widgets.length; i += MAX_WIDGETS_PER_BATCH) {
+        widgetChunks.push(
+          widgets.slice(i, i + MAX_WIDGETS_PER_BATCH).map((widget, idxInChunk) => ({
+            widget,
+            wIdx: i + idxInChunk,
+          })),
+        );
+      }
       let data: Record<string, MqeResultShape> = {};
-      if (fragments.length > 0) {
-        const query = `query DashboardMqe { ${fragments.join('\n    ')} }`;
-        try {
-          data = await graphqlPost<Record<string, MqeResultShape>>(opts, query);
-        } catch (err) {
-          return reply.send({
-            ...baseResp,
-            reachable: false,
-            error: err instanceof Error ? err.message : String(err),
-            widgets: widgets.map((w) => ({ id: w.id, error: 'mqe batch failed' })),
-          });
+      try {
+        const chunkResults = await Promise.all(
+          widgetChunks.map(async (chunk) => {
+            const fragments: string[] = [];
+            for (const { widget, wIdx } of chunk) {
+              widget.expressions.forEach((expr, eIdx) => {
+                const alias = `w${wIdx}_e${eIdx}`;
+                aliasMap.set(alias, { wIdx, eIdx });
+                fragments.push(
+                  buildFragment(alias, expr, serviceName, normal, window, {
+                    layerScope: widget.layerScope === true,
+                    serviceInstanceName:
+                      widget.layerScope !== true && scopeHonorsInstance ? selectedInstance : null,
+                    endpointName:
+                      widget.layerScope !== true && scopeHonorsEndpoint ? selectedEndpoint : null,
+                  }),
+                );
+              });
+            }
+            if (fragments.length === 0) return {} as Record<string, MqeResultShape>;
+            const query = `query DashboardMqe { ${fragments.join('\n    ')} }`;
+            return graphqlPost<Record<string, MqeResultShape>>(opts, query);
+          }),
+        );
+        for (const chunk of chunkResults) {
+          Object.assign(data, chunk);
         }
+      } catch (err) {
+        return reply.send({
+          ...baseResp,
+          reachable: false,
+          error: err instanceof Error ? err.message : String(err),
+          widgets: widgets.map((w) => ({ id: w.id, error: 'mqe batch failed' })),
+        });
       }
 
       // Step 3 — collapse per widget. Per-type handling:

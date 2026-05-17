@@ -268,7 +268,12 @@ export function useLayerPageOrchestrator(refs: OrchestratorRefs): {
         const label = titleById.get(r.id) ?? r.id;
         let kind: 'ok' | 'err' | 'info' = 'info';
         let detail = 'no data';
-        if (r.error) {
+        // The BFF uses `error: "no data"` as a non-fatal sentinel
+        // when a widget's MQE returned nothing (metric not reporting
+        // for this entity right now). Treat that as `info`, not
+        // `err`, so the ticker doesn't light up red for ordinary
+        // empty cells. Real backend errors keep the ✕ kind.
+        if (r.error && r.error !== 'no data') {
           kind = 'err';
           detail = `error: ${r.error}`;
         } else if (r.value != null) {

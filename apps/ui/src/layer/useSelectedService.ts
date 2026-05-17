@@ -42,11 +42,18 @@ export function useSelectedService() {
     if (id === current) return;
     if (id) next.service = id;
     else delete next.service;
-    // Instance / endpoint choices are derived from the selected service.
-    // When the service changes, drop the narrower entity so each
-    // dashboard can auto-pick from the new service's own list.
-    delete next.instance;
-    delete next.endpoint;
+    // Drop the narrower picks (?instance=, ?endpoint=) ONLY when
+    // we're replacing an existing service. First-time auto-fill
+    // (`current === null` — URL arrived with no ?service= at all)
+    // preserves any `?instance=` / `?endpoint=` URL hints the
+    // operator typed or that a sharable link carried, because
+    // those were the explicit intent. Without this, hitting
+    // `/layer/general/instance?instance=X` dropped X immediately
+    // and the auto-picked service's first instance won the race.
+    if (current !== null) {
+      delete next.instance;
+      delete next.endpoint;
+    }
     // `replace` instead of `push` — switching services shouldn't bloat
     // the browser back stack with N entries.
     void router.replace({ path: route.path, query: next });

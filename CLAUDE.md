@@ -49,11 +49,9 @@ Every OAP metric lives under exactly one entity scope (Service / ServiceInstance
 
 ## Design source of truth
 
-The visual spec (HTML/JSX prototypes, tokens snapshot, planning notes) lives **locally only** under `docs/` (gitignored). The prototypes are the visual spec — recreate them pixel-perfectly in Vue; don't blindly port their component structure, match the rendered output.
+Design tokens live in the runtime token CSS (`apps/ui/src/assets/styles/tokens.css`) — that copy is canonical. The early-build HTML/JSX prototype bundle has been retired now that every screen has a Vue implementation with visual sign-off. When a new screen is needed, the existing dark-dense vocabulary in the rendered UI is the spec; match it.
 
-If `docs/` is missing on your machine, **ask the user to share the design bundle** before doing visual work. Do not invent layouts.
-
-Design tokens have been lifted into the runtime token CSS — that copy is canonical. `docs/` will be removed once every screen has a Vue implementation with visual sign-off; don't reference its files from production code.
+`docs/` is now the **public website docs** tree (committed, flat layout, see `docs/menu.yml`). Do not put planning notes, research dumps, or design prototypes there — those stay out of git.
 
 ## Things that are non-negotiable
 
@@ -97,4 +95,4 @@ Design tokens have been lifted into the runtime token CSS — that copy is canon
 2. **Validating with type-checks instead of OAP.** Green `tsc` and green tests do not prove the feature works. If you can't hit a real OAP, ask for one.
 3. **Blanket reverts.** `git checkout <file>` discards anyone else's uncommitted changes too. Diff first, revert by hunk.
 4. **Faking backend data to "unblock" yourself.** A mocked response that shapes nothing real is worse than no response — it hides the real wire mismatch until much later. Ask for OAP access.
-5. **Inventing layouts when `docs/` is missing.** Stop and ask.
+5. **Inventing layouts.** The rendered UI is the visual spec; match the existing dark-dense vocabulary rather than introducing new conventions. If something is genuinely new, ask before designing.

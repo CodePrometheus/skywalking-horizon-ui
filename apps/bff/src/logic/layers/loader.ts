@@ -320,7 +320,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  *   arbitrary working dir with the templates beside them. */
 function locateConfigDir(): string {
   const candidates = [
+    // Self-contained flat dist (`pnpm package` output: server.js +
+    // bundled_templates as siblings inside ./dist/).
+    join(__dirname, 'bundled_templates', 'layers'),
+    // Dev (tsx watch: apps/bff/src/logic/layers/loader.ts).
     join(__dirname, '..', '..', 'bundled_templates', 'layers'),
+    // Docker image (/app/dist/server.js → /app/bundled_templates).
     join(__dirname, '..', 'bundled_templates', 'layers'),
     join(process.cwd(), 'bundled_templates', 'layers'),
   ];

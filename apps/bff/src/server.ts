@@ -181,13 +181,18 @@ registerOverviewTemplatesAdminRoutes(app, { config: source, sessions });
 registerAuthStatusRoutes(app, { config: source, ldapHealth, sessions });
 registerAdminUsersRoute(app, { config: source, seenCache });
 
-// Serve the built SPA out of the BFF when HORIZON_STATIC_DIR points at a
-// directory (Docker image layout: /app/static contains the Vite dist).
-// Local dev keeps using the Vite dev-server on :9091 so this is a no-op
-// when the env var is absent.
-const staticDir = process.env.HORIZON_STATIC_DIR
-  ? resolvePath(process.env.HORIZON_STATIC_DIR)
-  : null;
+// Serve the built SPA out of the BFF when a static dir is configured.
+// Two paths to set it:
+//   - HORIZON_STATIC_DIR env var (Docker image layout: /app/static).
+//   - server.staticDir in horizon.yaml (local dev / operator-managed).
+// The env var wins when both are set so the image's default isn't
+// silently shadowed by a stale YAML value. Vite dev-server on :9091 is
+// still the right path during UI development; this branch is for the
+// "serve the built SPA from the BFF" workflow.
+const staticDir = (() => {
+  const raw = process.env.HORIZON_STATIC_DIR ?? source.current.server.staticDir;
+  return raw ? resolvePath(raw) : null;
+})();
 if (staticDir && existsSync(staticDir)) {
   await app.register(fastifyStatic, { root: staticDir, prefix: '/', wildcard: false });
   // SPA fallback — anything that isn't an `/api/*` request and didn't match

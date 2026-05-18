@@ -13,68 +13,48 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ---- builder ----------------------------------------------------------------
-# Builds the BFF bundle + the Vite SPA in a single workspace install. Final
-# image only carries the BFF dist + UI dist + the production dependency tree
-# (no source, no devDependencies, no pnpm store).
-FROM node:20-alpine AS builder
-WORKDIR /workspace
+# Copy-in image. The image does NOT compile anything and does NOT run
+# `pnpm install` — it consumes the pre-built `./dist/` produced by
+# `pnpm package` at the repo root and lays it out under `/app/`. Build
+# the artifact first:
+#
+#     pnpm install            # one-time / on lockfile changes
+#     pnpm package            # produces ./dist/ (server.js + node_modules
+#                             # + bundled_templates + static + example yaml)
+#     docker build -t horizon-ui:local .
+#
+# Net effect: tiny image (no Node toolchain, no devDeps, no pnpm store,
+# no source), reproducible (the dist/ tarball is the contract), and
+# air-gap-friendly (image build needs zero network).
 
-# argon2 (password hashing) builds a native module; alpine needs python + a
-# C toolchain at build time. The deps are dropped from the runtime stage.
-RUN apk add --no-cache python3 make g++ libc6-compat
-# Activate the pnpm version pinned in the repo's root `package.json`.
-# We pin it here too so `corepack prepare` doesn't need package.json
-# on disk yet (it runs before the COPY of workspace manifests).
-RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
-
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY apps/bff/package.json apps/bff/
-COPY apps/ui/package.json apps/ui/
-COPY packages/api-client/package.json packages/api-client/
-COPY packages/design-tokens/package.json packages/design-tokens/
-COPY packages/templates/package.json packages/templates/
-RUN pnpm install --frozen-lockfile
-
-COPY . .
-RUN pnpm --filter @skywalking-horizon-ui/bff build \
- && pnpm --filter @skywalking-horizon-ui/ui  build
-
-# Deploy a focused production install for the BFF — pnpm copies only the
-# packages it actually needs (workspace deps + runtime npm deps). The
-# `--legacy` flag is mandatory under pnpm 10+ for non-injected
-# workspaces (the alternative is enabling `inject-workspace-packages`
-# everywhere, which we don't need for plain workspace deps).
-RUN pnpm deploy --legacy --filter @skywalking-horizon-ui/bff --prod /deploy/bff
-
-# ---- runtime ---------------------------------------------------------------
 FROM node:20-alpine
 WORKDIR /app
 
 # Run as a non-root user — the BFF doesn't need any privileged access.
 RUN addgroup -S horizon && adduser -S -G horizon horizon
 
-# Read-only artifacts (code, deps, static assets, example config) — owned
-# by root, world-readable. The BFF never writes here.
-COPY --from=builder /deploy/bff/dist ./dist
-COPY --from=builder /deploy/bff/node_modules ./node_modules
-COPY --from=builder /deploy/bff/package.json ./package.json
-COPY --from=builder /workspace/apps/ui/dist ./static
-COPY --from=builder /workspace/horizon.example.yaml ./horizon.example.yaml
+# Pre-built artifact. Layout matches what `node server.js` expects:
+# server.js + bundled_templates + node_modules + static all siblings
+# under /app/. The bundled-template loader probes `__dirname/bundled_
+# templates` first (see apps/bff/src/logic/layers/loader.ts).
+#
+# Read-only artifacts owned by root:
+COPY dist/server.js              ./server.js
+COPY dist/package.json           ./package.json
+COPY dist/node_modules           ./node_modules
+COPY dist/static                 ./static
+COPY dist/horizon.example.yaml   ./horizon.example.yaml
 
 # `bundled_templates/` is writable: the admin Layer-Templates and
-# Overview-Templates editors `writeFileSync` into the per-key/per-id
-# JSON files here. Must be owned by the `horizon` user, otherwise admin
-# saves EACCES. The loader still resolves the directory via
-# `__dirname/../bundled_templates`, so the path layout stays in sync
-# with the source tree.
-COPY --from=builder --chown=horizon:horizon /workspace/apps/bff/src/bundled_templates ./bundled_templates
+# Overview-Templates editors `writeFileSync` into per-key / per-id JSON
+# files. Owned by the `horizon` user so saves don't EACCES.
+COPY --chown=horizon:horizon dist/bundled_templates  ./bundled_templates
 
 # `/data` is the writable state directory the BFF writes its runtime
 # files into (audit log, setup state, alarm state, wire debug log).
-# Operators can mount a PVC / named volume / host bind at /data and
-# the configured paths below land on durable storage. Without this
-# mount the writes go to the container's writable layer (ephemeral).
+# Operators mount a PVC / named volume / host bind here for durable
+# storage. Without a mount the writes go to the container's writable
+# layer (ephemeral).
 RUN mkdir -p /data && chown horizon:horizon /data
 VOLUME ["/data"]
 
@@ -88,4 +68,4 @@ ENV NODE_ENV=production \
 
 USER horizon
 EXPOSE 8081
-CMD ["node", "dist/server.js"]
+CMD ["node", "server.js"]

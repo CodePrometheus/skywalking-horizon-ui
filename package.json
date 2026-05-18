@@ -18,7 +18,9 @@
     "lint": "pnpm -r run lint",
     "test:unit": "pnpm -r run test:unit",
     "license:check": "license-eye -c .licenserc.yaml header check",
-    "license:fix": "license-eye -c .licenserc.yaml header fix"
+    "license:fix": "license-eye -c .licenserc.yaml header fix",
+    "package": "node scripts/package.mjs",
+    "start": "HORIZON_CONFIG=${HORIZON_CONFIG:-./horizon.yaml} node dist/server.js"
   },
   "devDependencies": {
     "typescript": "~5.6.3"

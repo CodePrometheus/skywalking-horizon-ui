@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "dist/server.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "esbuild src/server.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.js --packages=external",

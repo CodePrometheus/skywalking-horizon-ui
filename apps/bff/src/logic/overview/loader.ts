@@ -39,6 +39,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  *  — see that file for the rationale. */
 function locateConfigDir(): string {
   const candidates = [
+    path.join(__dirname, 'bundled_templates', 'overviews'),
     path.join(__dirname, '..', '..', 'bundled_templates', 'overviews'),
     path.join(__dirname, '..', 'bundled_templates', 'overviews'),
     path.join(process.cwd(), 'bundled_templates', 'overviews'),

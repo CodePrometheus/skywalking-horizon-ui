@@ -58,6 +58,23 @@ jobs:
         with:
           persist-credentials: false
 
+      # The Dockerfile is a pure copy-in of `./dist/` (no compile or
+      # network inside `docker build`). Build the artifact on the
+      # runner first; the image just lays it out under /app.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Activate pnpm
+        run: corepack enable && corepack prepare pnpm@10.33.2 --activate
+
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build self-contained ./dist/
+        run: pnpm package
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392
 
@@ -103,8 +120,14 @@ jobs:
       - name: Build + push
         run: |
           set -eu
+          # Single-platform (linux/amd64) for now. The `./dist/` is built
+          # on the GitHub-hosted runner (linux/amd64), and `argon2` ships
+          # native bindings — cross-arch packaging would need a per-arch
+          # matrix of build jobs that each produce their own dist/ +
+          # platform-tagged image, then a buildx imagetools merge into a
+          # manifest list. Easy follow-up when arm64 demand is real.
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64 \
             --file Dockerfile \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \

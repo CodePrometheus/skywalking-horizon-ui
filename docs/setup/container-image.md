@@ -39,7 +39,8 @@ The runtime stage runs as the non-root user `horizon`. Two locations are owned b
 
 | Variable | Default in image | Purpose |
 |---|---|---|
-| `NODE_ENV` | `production` | Sets Node into production mode. |
+| `NODE_ENV` | `production` | Drives the logger format (JSON vs pretty) and Node optimizations. |
+| `LOG_LEVEL` | (unset → `error` in production, `debug` in dev) | Pino log level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`. |
 | `HORIZON_CONFIG` | `/app/horizon.yaml` | Where the BFF looks for `horizon.yaml`. Override to mount elsewhere. |
 | `HORIZON_STATIC_DIR` | `/app/static` | Where the BFF serves UI assets from. |
 | `HORIZON_AUDIT_FILE` | `/data/horizon-audit.jsonl` | Default for `audit.file` when `horizon.yaml` doesn't override it. |
@@ -216,6 +217,59 @@ To persist admin-edited templates across container restarts / image updates:
 2. Mount that directory back in: `-v "$PWD/bundled_templates:/app/bundled_templates"`.
 
 The mounted directory must be writable by the `horizon` user (UID/GID inside the container — check with `docker run --rm <image> id horizon`). Without persistence, admin edits behave as ephemeral overrides — useful for try-it-out, destructive for production.
+
+## Logging
+
+The BFF uses [pino](https://github.com/pinojs/pino) and writes **structured JSON** to **stdout** in production — visible via `docker logs <container>` and ready for any log aggregator (Fluent Bit, Vector, Promtail, Filebeat, Datadog) without extra parsers.
+
+| Mode | How to enter | Output |
+|---|---|---|
+| Production | The image sets `NODE_ENV=production`. Local: `NODE_ENV=production node dist/server.js`. | One JSON object per line on stdout. **Default level `error`** — quiet by default; only warnings, errors, and fatals reach stdout. Fields: `level`, `time`, `pid`, `hostname`, plus per-event keys (`reqId`, `req`, `res`, `responseTime`, `msg`, …). |
+| Development | The local binary defaults to dev (`NODE_ENV` unset). | Pretty-printed, colorized, with timestamps via `pino-pretty`. Default level `debug`. Same fields, human-readable. |
+
+Adjust the floor with `LOG_LEVEL` when triaging:
+
+```sh
+docker run -e LOG_LEVEL=info ...    # add per-request access logs + lifecycle
+docker run -e LOG_LEVEL=debug ...   # add the loader / capability-probe chatter
+docker run -e LOG_LEVEL=trace ...   # every pino-instrumented site
+docker run -e LOG_LEVEL=warn ...    # even quieter than the default
+NODE_ENV=production LOG_LEVEL=info node dist/server.js
+```
+
+### Per-request logging
+
+Fastify's request logger is on by default and emits one `incoming request` line + one `request completed` line per HTTP request, both tagged with a stable `reqId`. These are level-`info` (30) events — **suppressed under the production default `error`**. Bump to `LOG_LEVEL=info` to surface them; example pair under that level:
+
+```json
+{"level":30,"time":1779109372598,"pid":1,"hostname":"...","reqId":"req-1","req":{"method":"GET","url":"/api/auth/health","host":"127.0.0.1:8081","remoteAddress":"192.168.65.1","remotePort":60655},"msg":"incoming request"}
+{"level":30,"time":1779109372614,"pid":1,"hostname":"...","reqId":"req-1","res":{"statusCode":200},"responseTime":14.93,"msg":"request completed"}
+```
+
+Genuine request errors (5xx, request-handler exceptions) are still logged at `error` (50) — they reach stdout under any default that includes `error`.
+
+This is separate from the **audit log** (which records sensitive operations — login, rule edits, break-glass — to a JSONL file at `audit.file`; see [Access Control → Audit Log](../access-control/audit-log.md)) and the **wire-debug log** (which records OAP HTTP request/response payloads when `debugLog.enabled: true`; see [Setup → debugLog](debug-log.md)). Three orthogonal channels:
+
+| Channel | Where | What | Toggle |
+|---|---|---|---|
+| App logs | stdout (JSON in prod, pretty in dev) | Lifecycle + per-request | Always on. `LOG_LEVEL` adjusts. |
+| Audit log | `audit.file` (JSONL) | Logins, RBAC-gated mutations | Always on. Path = `audit.file`. |
+| Wire-debug | `debugLog.file` (JSONL) | Outbound OAP requests/responses | Off by default. `debugLog.enabled: true` opt-in. |
+
+### Aggregating from Docker
+
+```sh
+# Quick tail with severity color (jq):
+docker logs -f horizon-test | jq -c '. | "\(.time|todate) [\(.level)] \(.msg)"' -r
+
+# Just request failures:
+docker logs -f horizon-test | jq -c 'select(.res.statusCode >= 400)'
+
+# Just structured slowness:
+docker logs -f horizon-test | jq -c 'select(.responseTime != null and .responseTime > 200)'
+```
+
+For Kubernetes, the standard pipelines (fluent-bit `tail` plugin with `Parser json`, or vector `kubernetes_logs` → `parse_json`) ingest these lines directly. No app-side configuration required.
 
 ## Network
 

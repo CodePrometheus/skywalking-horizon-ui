@@ -243,11 +243,13 @@ export function makeRouteAuthHook(deps: AuthDeps) {
         logger.error({ method: methods, url: route.url }, msg);
         throw new Error(msg);
       }
-      logger.warn(
-        { method: methods, url: route.url },
-        'rbac: non-api route has no policy entry; defaulting to auth-only',
-      );
-      chosen = 'auth';
+      // Everything else (SPA static — `/`, `/login`, `/assets/*`, etc.,
+      // registered by @fastify/static) is inherently public: the served
+      // bundle is harmless, and the protected APIs it calls all have
+      // their own ROUTE_POLICY entries enforced above. Gating these
+      // routes on 'auth' breaks the login page (the browser can't load
+      // /login before the user has a session).
+      return;
     }
     if (chosen === 'public') return;
 

@@ -19,8 +19,19 @@ import pino, { type LoggerOptions } from 'pino';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+/**
+ * Default log level:
+ *   - dev: `debug` (verbose, helpful while iterating)
+ *   - prod: `error` (quiet by default — Fastify's per-request `info`
+ *     access logs are suppressed; only warnings, errors, and fatals
+ *     reach stdout)
+ *
+ * Operators turn it up explicitly when triaging: `LOG_LEVEL=info` for
+ * access logs, `LOG_LEVEL=debug` for the lifecycle chatter, `trace`
+ * for everything pino-instrumented code emits.
+ */
 export const loggerOptions: LoggerOptions = {
-  level: process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info'),
+  level: process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'error'),
   ...(isDev
     ? {
         transport: {

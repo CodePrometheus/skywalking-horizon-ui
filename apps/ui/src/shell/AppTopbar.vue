@@ -122,16 +122,8 @@ const localTzLabel = computed<string>(() => {
   return m === 0 ? `UTC${sign}${h}` : `UTC${sign}${h}:${String(m).padStart(2, '0')}`;
 });
 
-// True when the user's browser is in a different TZ than the OAP server.
-// Time-range queries get converted server-side; the chip flags the gap
-// so the operator knows the displayed local time will differ from the
-// server's log timestamps.
-const { timezone: serverTzMin } = useOapInfo();
-const tzMismatch = computed<boolean>(() => {
-  if (serverTzMin.value === undefined) return false;
-  const browserMin = -new Date().getTimezoneOffset();
-  return browserMin !== serverTzMin.value;
-});
+// `tzMismatch` removed alongside the TZ chip; if a per-component
+// browser-vs-server TZ check returns, derive from `useOapInfo().timezone`.
 
 /**
  * Routes that own their own time range — the global topbar picker +
@@ -404,9 +396,11 @@ function formatRangeStamp(ms: number, step: TimeStep): string {
         <span class="dot" />
         <span v-if="reachable" class="ver">OAP</span>
         <span v-else class="ver">offline</span>
-        <span v-if="reachable && tzOffsetLabel" class="tz" :class="{ mismatch: tzMismatch }">
-          {{ tzOffsetLabel }}
-        </span>
+        <!-- Server TZ offset removed from the visible chip — too much
+             noise next to the health dot for an operator-rare check.
+             The tooltip (`oapChipTooltip`) still surfaces the value
+             when reachable, and the Cluster Status page → Query pane
+             shows it prominently. -->
       </RouterLink>
       <div ref="timeClusterEl" class="time-cluster">
         <button
@@ -899,14 +893,6 @@ function formatRangeStamp(ms: number, step: TimeStep): string {
 .oap-chip .ver {
   color: var(--sw-fg-0);
   font-weight: 600;
-}
-.oap-chip .tz {
-  color: var(--sw-fg-2);
-  padding-left: 4px;
-  border-left: 1px solid var(--sw-line-2);
-}
-.oap-chip .tz.mismatch {
-  color: var(--sw-warn);
 }
 @keyframes pulse-err {
   0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }

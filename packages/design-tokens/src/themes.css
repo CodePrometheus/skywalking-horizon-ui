@@ -42,7 +42,11 @@
   --sw-bg-0: #0a0d12;
   --sw-bg-1: #0f131a;
   --sw-bg-2: #151a23;
+  --sw-bg-3: #1c222d;
+  --sw-bg-4: #232a37;
   --sw-line: #232a37;
+  --sw-line-2: #2e3645;
+  --sw-line-3: #3a4456;
 
   --sw-fg-0: #e8ecf3;
   --sw-fg-1: #b6bdcc;
@@ -69,7 +73,11 @@
   --sw-bg-0: #0b0f1a;
   --sw-bg-1: #101421;
   --sw-bg-2: #171c2e;
+  --sw-bg-3: #1e2438;
+  --sw-bg-4: #252d44;
   --sw-line: #232a3c;
+  --sw-line-2: #2e3650;
+  --sw-line-3: #3a4566;
 
   --sw-fg-0: #eef0f7;
   --sw-fg-1: #aeb4c7;
@@ -96,7 +104,11 @@
   --sw-bg-0: #000000;
   --sw-bg-1: #0a0a0a;
   --sw-bg-2: #141414;
+  --sw-bg-3: #1c1c1c;
+  --sw-bg-4: #242424;
   --sw-line: #222222;
+  --sw-line-2: #303030;
+  --sw-line-3: #404040;
 
   --sw-fg-0: #f4f4f5;
   --sw-fg-1: #c4c4c4;
@@ -119,11 +131,22 @@
 }
 
 /* ── daybreak — light + violet, airy ─────────────────────────────── */
+/* CAREFUL: every bg layer MUST stay light. The default `:root`
+ * defines `--sw-bg-3` / `--sw-bg-4` / `--sw-line-2` / `--sw-line-3`
+ * as DARK values (it's the Horizon palette). Without explicit light
+ * overrides for those tokens, hover states (which read bg-3) flash
+ * dark on Daybreak and the dark fg-0 text becomes invisible against
+ * them. Each layer goes slightly darker than the previous so
+ * elevation reads consistently. */
 [data-theme="daybreak"] {
   --sw-bg-0: #f7f7fa;
   --sw-bg-1: #ffffff;
   --sw-bg-2: #f0f1f5;
+  --sw-bg-3: #e8e9ed;
+  --sw-bg-4: #dfe1e8;
   --sw-line: #e3e4ec;
+  --sw-line-2: #cdcfd8;
+  --sw-line-3: #b3b6c0;
 
   --sw-fg-0: #0a0d12;
   --sw-fg-1: #3a3f4c;
@@ -150,7 +173,11 @@
   --sw-bg-0: #0b0d18;
   --sw-bg-1: #11142a;
   --sw-bg-2: #181b35;
+  --sw-bg-3: #1f2240;
+  --sw-bg-4: #272b4e;
   --sw-line: #262a48;
+  --sw-line-2: #323766;
+  --sw-line-3: #40467f;
 
   --sw-fg-0: #f1f3ff;
   --sw-fg-1: #b9bee0;

@@ -231,6 +231,12 @@ function metaBadgeStyle(t: ThemeDef): Record<string, string> {
 
 <style scoped>
 .tpc {
+  /* `position: relative` is load-bearing — the absolute-positioned
+   * `.tpc__badges` (top:8 left:8 z:2 pill cluster) and the
+   * `.tpc__brand` chip inside the hero look up the tree for the
+   * nearest positioned ancestor; without this they escape the card
+   * entirely and end up floating against `<body>`. */
+  position: relative;
   border: 1px solid;
   border-radius: 10px;
   overflow: hidden;

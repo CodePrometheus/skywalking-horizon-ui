@@ -38,11 +38,59 @@ jobs:
       - name: Check license header
         uses: apache/skywalking-eyes@5b7ee1731d036b5aac68f8bd3fc9e6f98ada082e
 
-  # NOTE: `license-eye dependency resolve` is deferred to a release-only
-  # workflow. The tool invokes `npm ci` internally, which fails on pnpm
-  # workspaces (no package-lock.json). When we cut an Apache release we'll
-  # add a separate job that runs the resolver against a one-shot npm install
-  # of the production dep graph. For day-to-day CI, header-check is enough.
+  dependency-license:
+    # Separate from `license-header` on purpose: header check is a quick
+    # static scan; dep-license collection requires a full production build
+    # (pnpm package → dist/node_modules) and then a walk of that tree to
+    # produce dist/LICENSE + dist/NOTICE + dist/licenses/. We also verify
+    # source vs. binary LICENSE/NOTICE differ in the expected way
+    # (only the binary carries the bundled-dep summary).
+    name: Dependency license
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package
+      - name: Collect bundled-dep LICENSE/NOTICE
+        run: node scripts/collect-dist-licenses.mjs
+      - name: Check bundled-dep licenses against ASF allow/deny
+        run: node scripts/check-dist-licenses.mjs
+      - name: Compare source vs. binary LICENSE/NOTICE shape
+        run: |
+          # Source-flavored LICENSE = repo root; must NOT contain the
+          # bundled-dep summary section.
+          if grep -q 'Horizon UI Subcomponents' LICENSE; then
+            echo "ERROR: repo-root LICENSE contains the bundled-dep summary section."
+            echo "       That section belongs only in dist/LICENSE (binary tarball)."
+            exit 1
+          fi
+          # Binary-flavored LICENSE = generated; must contain the summary.
+          if ! grep -q 'Horizon UI Subcomponents' dist/LICENSE; then
+            echo "ERROR: dist/LICENSE missing 'Horizon UI Subcomponents' section."
+            echo "       collect-dist-licenses.mjs did not run or template drift."
+            exit 1
+          fi
+          # NOTICE: both must exist and start with the same ASF copyright line.
+          test -f NOTICE && test -f dist/NOTICE
+          head -1 NOTICE | grep -q 'Apache SkyWalking Horizon UI'
+          head -1 dist/NOTICE | grep -q 'Apache SkyWalking Horizon UI'
+          echo "src/bin LICENSE+NOTICE shape OK."
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-license-report
+          path: |
+            dist/LICENSE
+            dist/NOTICE
+            dist/.dependency-report.json
 
   type-check:
     name: Type-check (workspaces)
@@ -120,13 +168,14 @@ jobs:
     # [Required]`) can gate on a single rolled-up signal.
     if: always() && !cancelled()
     name: Required
-    needs: [license-header, type-check, build-ui, build-bff, test]
+    needs: [license-header, dependency-license, type-check, build-ui, build-bff, test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check upstream jobs
         run: |
           [[ ${{ needs.license-header.result }} == 'success' ]] || exit 1
+          [[ ${{ needs.dependency-license.result }} == 'success' ]] || exit 1
           [[ ${{ needs.type-check.result }} == 'success' ]] || exit 1
           [[ ${{ needs.build-ui.result }} == 'success' ]] || exit 1
           [[ ${{ needs.build-bff.result }} == 'success' ]] || exit 1

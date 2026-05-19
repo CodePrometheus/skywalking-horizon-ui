@@ -50,6 +50,11 @@ header:
     - 'src/types/auto-imports.d.ts'
     - 'src/types/components.d.ts'
     - 'public/**'
+    # LICENSE.tpl / NOTICE.tpl in dist-material/release-docs/ render the
+    # binary tarball's LICENSE / NOTICE (scripts/collect-dist-licenses.mjs).
+    # Their contents ARE the Apache 2.0 license text and the ASF notice
+    # text — an extra license-header comment would bleed into the output.
+    - 'dist-material/release-docs/**/*.tpl'
 
   comment: on-failure
 

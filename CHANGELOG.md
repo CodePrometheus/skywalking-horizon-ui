@@ -7,6 +7,17 @@ file-by-file implementation. For per-commit detail, see the git log.
 The version line is shared by every package in the monorepo (apps + shared
 packages) plus the BFF's `HORIZON_VERSION` default.
 
+## 0.5.0
+
+First Apache-style release cut from this repo: source + binary tarballs,
+GPG-signed and SHA-512 checksummed, with a self-contained binary that
+boots via `node server.js` and no `pnpm install` step. Binary distribution
+ships a regenerated `LICENSE` + `NOTICE` that enumerate every bundled
+third-party package — produced by `scripts/collect-dist-licenses.mjs`
+during packaging and validated against a deny-list before signing.
+
+Fill in screen-facing highlights here before tagging.
+
 ## 0.4.0
 
 OAP becomes the runtime source of truth for UI templates, the 5-theme system

@@ -164,10 +164,15 @@ export interface NetworkProfilingSampling {
   when4xx?: boolean;
   when5xx?: boolean;
   minDuration?: number;
-  /** OAP enum: HEADER, BODY (text), STATUS, etc. */
-  settings?: {
-    requireRequest?: boolean;
-    requireResponse?: boolean;
+  /** Mirrors OAP's `EBPFNetworkDataCollectingSettings` input. The two
+   *  require flags are non-null on the OAP side (`Boolean!`); the max
+   *  sizes are optional caps — omit to collect the whole request/
+   *  response. */
+  settings: {
+    requireCompleteRequest: boolean;
+    requireCompleteResponse: boolean;
+    maxRequestSize?: number;
+    maxResponseSize?: number;
   };
 }
 

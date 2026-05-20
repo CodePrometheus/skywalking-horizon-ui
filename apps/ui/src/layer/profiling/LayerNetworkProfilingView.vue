@@ -143,11 +143,19 @@ async function keepAlive(): Promise<void> {
 // ── New task modal ────────────────────────────────────────────────
 const showNewTask = ref(false);
 const newTaskError = ref<string | null>(null);
+// OAP's `EBPFNetworkDataCollectingSettings.requireCompleteRequest` and
+// `requireCompleteResponse` are `Boolean!` — non-null. Every sampling
+// row MUST carry the settings block, otherwise
+// `createEBPFNetworkProfiling` 400s with a schema validation error.
+const DEFAULT_SETTINGS = (): NetworkProfilingSampling['settings'] => ({
+  requireCompleteRequest: true,
+  requireCompleteResponse: true,
+});
 const samplings = ref<NetworkProfilingSampling[]>([
-  { uriRegex: '', minDuration: 0, when4xx: true, when5xx: true, settings: { requireRequest: true, requireResponse: true } },
+  { uriRegex: '', minDuration: 0, when4xx: true, when5xx: true, settings: DEFAULT_SETTINGS() },
 ]);
 function addSampling(): void {
-  samplings.value.push({ minDuration: 0, when4xx: false, when5xx: false });
+  samplings.value.push({ minDuration: 0, when4xx: false, when5xx: false, settings: DEFAULT_SETTINGS() });
 }
 function removeSampling(i: number): void {
   samplings.value.splice(i, 1);
@@ -334,8 +342,8 @@ function fmtTime(ms: number): string {
           <div class="check-row">
             <label class="cb"><input type="checkbox" v-model="s.when4xx" /> when 4xx</label>
             <label class="cb"><input type="checkbox" v-model="s.when5xx" /> when 5xx</label>
-            <label class="cb"><input type="checkbox" v-model="s.settings!.requireRequest" /> capture request</label>
-            <label class="cb"><input type="checkbox" v-model="s.settings!.requireResponse" /> capture response</label>
+            <label class="cb"><input type="checkbox" v-model="s.settings.requireCompleteRequest" /> capture request</label>
+            <label class="cb"><input type="checkbox" v-model="s.settings.requireCompleteResponse" /> capture response</label>
           </div>
         </div>
         <button class="btn-secondary" type="button" @click="addSampling">+ add another sampling rule</button>

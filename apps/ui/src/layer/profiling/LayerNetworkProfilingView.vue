@@ -73,8 +73,14 @@ const tasksError = ref<string | null>(null);
 const tasksLoading = ref(false);
 const currentTask = ref<EBPFTask | null>(null);
 
+// Tasks are listed per SERVICE, not per selected instance. A network
+// task runs against the instance that was live when it was created; if
+// that pod has since been replaced (new pod name), AND-ing the task
+// query with the currently-selected instance hides the task entirely.
+// The task object carries its own serviceInstanceId, so the list stays
+// correct and selecting a task can still drive the right topology.
 watch(
-  () => layerKey.value + '|' + (serviceId.value ?? '') + '|' + (selectedInstanceId.value ?? ''),
+  () => layerKey.value + '|' + (serviceId.value ?? ''),
   () => void refreshTasks(),
   { immediate: true },
 );
@@ -83,17 +89,19 @@ async function refreshTasks(): Promise<void> {
   tasksError.value = null;
   tasks.value = [];
   currentTask.value = null;
-  if (!serviceId.value && !selectedInstanceId.value) return;
+  if (!serviceId.value) return;
   tasksLoading.value = true;
   try {
     const resp = await bffClient.networkProfile.tasks(layerKey.value, {
       service: serviceId.value ?? undefined,
-      serviceInstance: selectedInstanceId.value ?? undefined,
     });
     if (!resp.reachable && resp.error) tasksError.value = resp.error;
     tasks.value = resp.tasks ?? [];
     currentTask.value = tasks.value[0] ?? null;
-    await loadTopology();
+    // currentTask change drives loadTopology via the watch below; when
+    // the list is empty currentTask stays null and we fall back to the
+    // live picker view.
+    if (!currentTask.value) await loadTopology();
   } catch (e) {
     tasksError.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -108,17 +116,33 @@ const topologyLoading = ref(false);
 const topologyError = ref<string | null>(null);
 const windowMinutes = ref(30);
 
+// Topology follows the SELECTED TASK: a finished FIXED_TIME task only
+// captured process relations on its own instance during its own window
+// (and that pod may since have been replaced). When a task is selected
+// we query its instance + [taskStartTime, taskStartTime+duration]; with
+// no task we fall back to the picker instance + rolling window.
+watch([currentTask, selectedInstanceId], () => void loadTopology());
+
 async function loadTopology(): Promise<void> {
   nodes.value = [];
   calls.value = [];
   topologyError.value = null;
-  if (!selectedInstanceId.value) return;
+  const task = currentTask.value;
+  const instanceId = task?.serviceInstanceId ?? selectedInstanceId.value;
+  if (!instanceId) return;
   topologyLoading.value = true;
   try {
-    const resp = await bffClient.networkProfile.topology(
-      selectedInstanceId.value,
-      windowMinutes.value,
-    );
+    let topoOpts: { windowMinutes?: number; startTime?: number; endTime?: number };
+    if (task?.taskStartTime) {
+      const dur = (task.fixedTriggerDuration ?? 0) * 1000;
+      topoOpts = {
+        startTime: task.taskStartTime,
+        endTime: dur > 0 ? task.taskStartTime + dur : Date.now(),
+      };
+    } else {
+      topoOpts = { windowMinutes: windowMinutes.value };
+    }
+    const resp = await bffClient.networkProfile.topology(instanceId, topoOpts);
     if (!resp.reachable && resp.error) topologyError.value = resp.error;
     nodes.value = resp.nodes ?? [];
     calls.value = resp.calls ?? [];
@@ -333,8 +357,8 @@ function fmtTime(ms: number): string {
           <button
             class="btn-refresh"
             :class="{ spinning: tasksLoading }"
-            :disabled="!selectedInstanceId || tasksLoading"
-            :title="!selectedInstanceId ? 'Pick an instance' : tasksLoading ? 'Refreshing…' : 'Refresh task list'"
+            :disabled="!serviceId || tasksLoading"
+            :title="!serviceId ? 'Pick a service' : tasksLoading ? 'Refreshing…' : 'Refresh task list'"
             aria-label="Refresh task list"
             @click="refreshTasks"
           ><Icon name="refresh" :size="11" /></button>
@@ -348,7 +372,7 @@ function fmtTime(ms: number): string {
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
       <div v-else-if="!tasks.length" class="side-empty">
-        {{ selectedInstanceId ? 'No network tasks on this instance.' : 'Pick an instance to load tasks.' }}
+        {{ serviceId ? 'No network tasks for this service.' : 'Pick a service to load tasks.' }}
       </div>
       <ul v-else class="side-list">
         <li

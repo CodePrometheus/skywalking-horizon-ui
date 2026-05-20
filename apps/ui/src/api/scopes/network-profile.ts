@@ -44,8 +44,21 @@ export class NetworkProfileApi {
     );
   }
 
-  topology(serviceInstance: string, windowMinutes = 30): Promise<ProcessTopologyResponse> {
-    const qs = new URLSearchParams({ serviceInstance, windowMinutes: String(windowMinutes) });
+  /** Process topology for an instance. Pass an explicit `startTime`/
+   *  `endTime` (ms epoch) to pin the view to a finished task's capture
+   *  window — the task's instance only reported eBPF processes during
+   *  that window. Omit them for the rolling live view (`windowMinutes`). */
+  topology(
+    serviceInstance: string,
+    opts: { windowMinutes?: number; startTime?: number; endTime?: number } = {},
+  ): Promise<ProcessTopologyResponse> {
+    const qs = new URLSearchParams({ serviceInstance });
+    if (opts.startTime !== undefined && opts.endTime !== undefined) {
+      qs.set('startTime', String(opts.startTime));
+      qs.set('endTime', String(opts.endTime));
+    } else {
+      qs.set('windowMinutes', String(opts.windowMinutes ?? 30));
+    }
     return this.bff.request<ProcessTopologyResponse>(
       'GET',
       `/api/ebpf/network/topology?${qs.toString()}`,

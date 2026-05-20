@@ -424,13 +424,32 @@ export function registerEBPFRoutes(app: FastifyInstance, deps: EBPFRouteDeps): v
     '/api/ebpf/network/topology',
     { preHandler: auth },
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const q = req.query as { serviceInstance?: string; windowMinutes?: string };
+      const q = req.query as {
+        serviceInstance?: string;
+        windowMinutes?: string;
+        startTime?: string;
+        endTime?: string;
+      };
       const instance = (q.serviceInstance ?? '').trim();
       const payload: ProcessTopologyResponse = { nodes: [], calls: [], reachable: true };
       if (!instance) return reply.send(payload);
-      const minutes = Math.max(5, Math.min(180, Number(q.windowMinutes) || 30));
-      const end = new Date();
-      const start = new Date(end.getTime() - minutes * 60_000);
+      // Explicit start/end (ms epoch) takes precedence — used to pin the
+      // topology to a finished task's capture window (the task's
+      // instance only had eBPF processes reporting during that window,
+      // and may since have been replaced). Falls back to a rolling
+      // window for the live view when no task is selected.
+      const startMs = Number(q.startTime);
+      const endMs = Number(q.endTime);
+      let start: Date;
+      let end: Date;
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+        start = new Date(startMs);
+        end = new Date(endMs);
+      } else {
+        const minutes = Math.max(5, Math.min(180, Number(q.windowMinutes) || 30));
+        end = new Date();
+        start = new Date(end.getTime() - minutes * 60_000);
+      }
       const fmt = (d: Date) => {
         const z = (n: number) => String(n).padStart(2, '0');
         return `${d.getUTCFullYear()}-${z(d.getUTCMonth() + 1)}-${z(d.getUTCDate())} ${z(d.getUTCHours())}${z(d.getUTCMinutes())}`;

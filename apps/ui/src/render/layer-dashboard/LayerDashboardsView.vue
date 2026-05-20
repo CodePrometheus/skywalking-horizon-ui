@@ -616,30 +616,16 @@ function isVisible(
       </template>
     </section>
 
-    <div v-if="configLoading" class="empty">Loading dashboard config…</div>
-    <div v-else-if="widgets.length === 0" class="empty">
-      No widgets defined for this layer. Add some via Dashboard setup → Layer dashboards.
-    </div>
-    <!-- The previous "Select an instance/endpoint above to view its
-         metrics" branches implied operator action was needed and
-         masked the (already-running) auto-pick — which made every
-         service click feel frozen for a beat before the cascade
-         visibly resumed. The picker handles its own empty state;
-         the "Reading data…" gate below covers the upstream wait. -->
-
-    <!-- Single page-level loading state while we don't yet have
-         widget data to render. Covers the whole upstream wait,
-         not just the dashboard fetch:
-           - landing query in flight (serviceName unresolved →
-             dashboard.enabled still false, isFetching=false,
-             but we're still loading)
-           - dashboard query in flight
-         The widget batch is server-side batched so widgets all
-         land together; one indicator is cleaner than N "loading…"
-         cards. Once `data` arrives, the grid takes over and shows
-         each widget's value / no-data / error normally. Background
-         refetches keep showing the prior data, no flash. -->
-    <div v-else-if="!dataIsFresh && reachable" class="empty reading">
+    <!-- Main-zone reset-then-load. ONE "Reading data…" state covers the
+         WHOLE upstream wait — the config-template fetch AND the
+         service→instance→dashboard chain — and it fires the instant any
+         upstream pick changes. The grid therefore visibly RESETS first
+         instead of lingering on the prior selection's widgets or
+         flashing "loading config" → "no widgets" → "reading" in
+         sequence (which read as a slow, jumpy entry). The "no widgets"
+         branch below only shows once config has actually loaded and the
+         layer genuinely defines none. -->
+    <div v-if="reachable && (configLoading || !dataIsFresh)" class="empty reading">
       <span class="reading-dot" />
       <span>
         Reading data
@@ -656,6 +642,9 @@ function isVisible(
           · loading {{ widgets.length }} metric{{ widgets.length === 1 ? '' : 's' }}
         </span>
       </span>
+    </div>
+    <div v-else-if="widgets.length === 0" class="empty">
+      No widgets defined for this layer. Add some via Dashboard setup → Layer dashboards.
     </div>
     <div v-else class="grid">
       <div
@@ -699,12 +688,14 @@ function isVisible(
               :groups="resultsById.get(w.id)!.topGroups!"
               :unit="w.unit"
               :color="widgetColor(w)"
+              :title="w.title"
             />
             <TopList
               v-else-if="resultsById.get(w.id)?.topList?.length"
               :items="resultsById.get(w.id)!.topList!"
               :unit="w.unit"
               :color="widgetColor(w)"
+              :title="w.title"
             />
             <span v-else class="muted">{{ isFetching && !resultsById.has(w.id) ? 'loading…' : 'no data' }}</span>
           </template>
@@ -717,6 +708,7 @@ function isVisible(
               :items="resultsById.get(w.id)!.records!.map((r) => ({ name: r.name, value: r.value ?? null }))"
               :unit="w.unit"
               :color="widgetColor(w)"
+              :title="w.title"
             />
             <span v-else class="muted">{{ isFetching && !resultsById.has(w.id) ? 'loading…' : 'no data' }}</span>
           </template>

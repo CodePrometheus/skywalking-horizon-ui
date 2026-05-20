@@ -74,6 +74,18 @@ function protocolOf(c: ProcessCall): string {
   if (t.includes('http')) return 'HTTP';
   return 'TCP';
 }
+/** Per-protocol accent for the edge pills — a colored border + label so
+ *  operators can read the transport at a glance instead of reading each
+ *  pill's text. */
+function protocolColor(p: string): string {
+  switch (p) {
+    case 'HTTP': return '#38bdf8'; // info blue
+    case 'HTTPS': return '#34d399'; // ok green
+    case 'TLS': return '#2dd4bf'; // teal
+    case 'TCP': return '#fbbf24'; // amber
+    default: return 'var(--sw-fg-3, #6c7080)';
+  }
+}
 
 let cellRadius = 26;
 let cellDraw = 20;
@@ -92,9 +104,13 @@ function layout(o: Pt): PositionedNode[] {
   const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
   const rows = Math.max(1, Math.ceil(n / cols));
   cellRadius = Math.max(24, Math.min(40, 120 / (rows + 1.2)));
-  cellDraw = cellRadius * 0.85;
-  const dx = cellRadius * 1.95;
-  const dy = cellRadius * 1.7;
+  // Rendered hexes are notably smaller than their spacing slot so the
+  // internal processes read as a compact, unified core that sits inside
+  // the (larger) dashed pod hexagon. Spacing tracks the draw size so the
+  // cluster stays tight when the hexes shrink.
+  cellDraw = cellRadius * 0.62;
+  const dx = cellDraw * 2.15;
+  const dy = cellDraw * 1.9;
   const topCount = n - cols * (rows - 1); // cells in the (partial) top row
   let idx = 0;
   for (let r = 0; r < rows; r++) {
@@ -106,6 +122,18 @@ function layout(o: Pt): PositionedNode[] {
       node._below = r === rows - 1;
     }
   }
+  // The row pyramid is slightly top/bottom-heavy, so shift the whole
+  // cluster so its centroid lands exactly on the pod centre `o`. The
+  // boundary tracks the same centroid, so the unified core ends up
+  // dead-centre inside the dashed pod hexagon.
+  if (inside.length > 0) {
+    const ccx = d3.mean(inside, (d) => d.x) ?? o.x;
+    const ccy = d3.mean(inside, (d) => d.y) ?? o.y;
+    for (const node of inside) {
+      node.x += o.x - ccx;
+      node.y += o.y - ccy;
+    }
+  }
 
   // External peers ring the pod CLOSE to its boundary (not flung to the
   // canvas corners), across the left / top / right, leaving the bottom
@@ -114,9 +142,13 @@ function layout(o: Pt): PositionedNode[] {
   positioned = [...inside, ...outside];
   const b = insideBoundary();
   const k = outside.length;
-  const pad = 130 + Math.max(0, k - 8) * 6;
+  // Now that the core is a small, compact cluster the auto-fit boundary
+  // is tight — push peers out to a generous, near-constant ring so they
+  // spread around the pod (like the reference layout) rather than
+  // hugging the shrunken hexagon.
+  const pad = 175 + Math.max(0, k - 8) * 8;
   const rx = b.r + pad;
-  const ry = b.r + pad * 0.82;
+  const ry = b.r + pad * 0.8;
   const START_DEG = 120; // just past bottom-left, sweep CCW-of-screen
   const SPAN_DEG = 300; // 120→180→270→0→60, skipping 60–120 (bottom)
   outside.forEach((node, i) => {
@@ -280,11 +312,15 @@ function render(): void {
   boundarySel = g
     .append('path')
     .attr('d', hexCellPath(b0.cx, b0.cy, b0.r))
-    .attr('fill', 'var(--sw-bg-1, #15171c)')
-    .attr('fill-opacity', 0.3)
-    .attr('stroke', 'var(--sw-line, #2a2d36)')
-    .attr('stroke-dasharray', '4 4')
-    .attr('stroke-width', 1.5);
+    // Warm-tinted fill + accent dashed border so the pod reads as a
+    // clearly-delineated orange container around its process core,
+    // instead of a near-invisible grey outline.
+    .attr('fill', 'var(--sw-accent, #f97316)')
+    .attr('fill-opacity', 0.08)
+    .attr('stroke', 'var(--sw-accent, #f97316)')
+    .attr('stroke-opacity', 0.55)
+    .attr('stroke-dasharray', '5 4')
+    .attr('stroke-width', 1.75);
   boundaryLabelSel = g
     .append('text')
     .attr('x', b0.cx)
@@ -336,17 +372,22 @@ function render(): void {
     .attr('height', 14)
     .attr('rx', 7)
     .attr('fill', 'var(--sw-bg-2, #1f2129)')
-    .attr('stroke', 'var(--sw-line, #2a2d36)');
+    .attr('stroke', (d) => protocolColor(d.protocol))
+    .attr('stroke-width', 1.25)
+    .attr('stroke-opacity', 0.9);
   pillSel
     .append('text')
     .attr('text-anchor', 'middle')
     .attr('dy', '0.32em')
-    .attr('fill', 'var(--sw-fg-2, #b4b7c2)')
+    .attr('fill', (d) => protocolColor(d.protocol))
     .style('font-family', 'var(--sw-mono, monospace)')
     .style('font-size', '9px')
+    .style('font-weight', '600')
     .text((d) => d.protocol);
 
-  // Nodes — hex cells (inside = accent, external = grey).
+  // Nodes — hex cells (inside = orange accent core, external peers =
+  // info-blue so they read as a distinct, colored class rather than a
+  // dim grey backdrop).
   nodeSel = g
     .append('g')
     .attr('class', 'nodes')
@@ -380,8 +421,8 @@ function render(): void {
   nodeSel
     .append('path')
     .attr('d', (d) => hexCellPath(0, 0, isInside(d) ? cellDraw : 18))
-    .attr('fill', (d) => (isInside(d) ? 'var(--sw-accent, #f97316)' : 'var(--sw-bg-3, #2a2d36)'))
-    .attr('fill-opacity', (d) => (isInside(d) ? 0.85 : 0.75))
+    .attr('fill', (d) => (isInside(d) ? 'var(--sw-accent, #f97316)' : 'var(--sw-info, #38bdf8)'))
+    .attr('fill-opacity', (d) => (isInside(d) ? 0.9 : 0.55))
     .attr('stroke', 'var(--sw-bg-0, #0d0f14)')
     .attr('stroke-width', 1.5);
   // Labels: bottom-row inside cells label BELOW, upper-row cells ABOVE

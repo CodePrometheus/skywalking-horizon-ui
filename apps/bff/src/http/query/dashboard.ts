@@ -310,12 +310,18 @@ export function parseLabeledSeries(
 
 /**
  * Extract a sorted list from a `top_n(...)` MQE response. Names follow
- * an entity-scope priority so layer-wide top lists (where the same
- * endpoint can appear in multiple services) stay disambiguated:
- *   Endpoint    →  "<service> · <endpoint>"  (or just endpoint when alone)
- *   Instance    →  "<service> · <instance>"
+ * an entity-scope priority:
+ *   Endpoint    →  "<service> · <endpoint>" or just "<endpoint>"
+ *   Instance    →  "<service> · <instance>" or just "<instance>"
  *   Service     →  service
  *   fallback    →  raw id
+ *
+ * The `<service> ·` prefix is only added when the list actually spans
+ * MULTIPLE services (layer-wide top lists, where the same endpoint can
+ * appear under different services and needs disambiguation). On a
+ * single-service dashboard ("Top 20 APIs" under one service) every row
+ * carries the same service, so the prefix is pure noise — drop it and
+ * show just the endpoint / instance.
  */
 export function parseTopList(
   r: MqeResultShape | undefined,
@@ -323,13 +329,18 @@ export function parseTopList(
   if (!r || r.error) return null;
   const values = r.results?.[0]?.values ?? [];
   if (values.length === 0) return null;
+  const services = new Set<string>();
+  for (const v of values) {
+    if (v.owner?.serviceName) services.add(v.owner.serviceName);
+  }
+  const multiService = services.size > 1;
   return values.map((v) => {
     const o = v.owner;
     let name = '—';
     if (o?.endpointName) {
-      name = o.serviceName ? `${o.serviceName} · ${o.endpointName}` : o.endpointName;
+      name = multiService && o.serviceName ? `${o.serviceName} · ${o.endpointName}` : o.endpointName;
     } else if (o?.serviceInstanceName) {
-      name = o.serviceName
+      name = multiService && o.serviceName
         ? `${o.serviceName} · ${o.serviceInstanceName}`
         : o.serviceInstanceName;
     } else if (o?.serviceName) {

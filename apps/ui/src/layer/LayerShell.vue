@@ -165,7 +165,23 @@ const safeCfg = computed(() => cfg.value?.landing ?? {
   style: 'table' as const,
 });
 const landing = useLayerLanding(safeLayer, safeCfg);
-const aggregates = computed(() => landing.data.value?.aggregates ?? null);
+
+// Cascade-clear for the header: the instant the layer changes (menu
+// click), reset to "no data" so the KPI strip + selected-service values
+// blank out (labels stay) instead of lingering on the previous layer's
+// numbers. Marked fresh again only once landing data for the new layer
+// lands. Cached layers resolve in the same tick, so there's no visible
+// flash for them — only a genuine fetch shows the cleared header.
+const landingFresh = ref(false);
+watch(layerKey, () => { landingFresh.value = false; });
+watch(
+  () => landing.data.value,
+  (d) => { if (d != null) landingFresh.value = true; },
+  { immediate: true },
+);
+const aggregates = computed(() =>
+  landingFresh.value ? (landing.data.value?.aggregates ?? null) : null,
+);
 
 // Page-wide selected service — URL-backed, shared with every tab body.
 const { selectedId, setSelected } = useSelectedService();
@@ -345,7 +361,7 @@ const serviceKpis = computed<HeaderKpi[]>(() => {
        // stale no-op (raw metric key, lowercase or empty). Operators
        // who set a custom label still get it shown.
       label: col.label && col.label !== col.metric ? col.label : m.label,
-      value: row.metrics[col.metric] ?? null,
+      value: landingFresh.value ? (row.metrics[col.metric] ?? null) : null,
       unit: col.unit || m.unit,
       color: colorForMetric(col.metric),
     });

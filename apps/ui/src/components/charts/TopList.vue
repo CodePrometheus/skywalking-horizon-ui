@@ -27,7 +27,7 @@
      widget. The first group is active by default.
 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { DashboardTopItem } from '@skywalking-horizon-ui/api-client';
 import { fmtMetric } from '@/utils/formatters';
 
@@ -48,6 +48,8 @@ const props = withDefaults(
     groups?: ReadonlyArray<TopGroup>;
     unit?: string;
     color?: string;
+    /** Widget title — shown as the pop-out modal header. */
+    title?: string;
   }>(),
   {
     color: 'var(--sw-accent)',
@@ -83,10 +85,62 @@ function pct(v: number | null): number {
   return Math.max(0, Math.min(100, (v / max.value) * 100));
 }
 const showTabs = computed(() => effectiveGroups.value.length > 1);
+
+// Pop-out: a widget often can't show the full ranked list (rows scroll)
+// or the full names (ellipsized). The pop-out renders the same active
+// list in a large teleported modal with wrapping names and roomy rows.
+const expanded = ref(false);
+function openExpanded(): void {
+  expanded.value = true;
+  window.addEventListener('keydown', onKeydown);
+}
+function closeExpanded(): void {
+  expanded.value = false;
+  window.removeEventListener('keydown', onKeydown);
+}
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeExpanded();
+}
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+
+// Full-name hover tooltip. Row names are ellipsized to fit the widget,
+// so long api / endpoint / instance names are unreadable inline. A
+// teleported floating box (rendered to <body>, not inside the widget)
+// shows the complete name without being clipped by the widget border.
+const hoverTip = ref<{ text: string; x: number; y: number } | null>(null);
+function showTip(e: MouseEvent, text: string): void {
+  hoverTip.value = { text, x: e.clientX, y: e.clientY };
+}
+function moveTip(e: MouseEvent): void {
+  if (hoverTip.value) hoverTip.value = { ...hoverTip.value, x: e.clientX, y: e.clientY };
+}
+function hideTip(): void {
+  hoverTip.value = null;
+}
+// Flip to the left of the cursor near the right edge so the box stays
+// on-screen; vertical offset keeps it clear of the pointer.
+const tipStyle = computed(() => {
+  const t = hoverTip.value;
+  if (!t) return {};
+  const flipLeft = t.x > window.innerWidth * 0.6;
+  return {
+    left: `${t.x + (flipLeft ? -12 : 12)}px`,
+    top: `${t.y + 14}px`,
+    transform: flipLeft ? 'translateX(-100%)' : 'none',
+  } as Record<string, string>;
+});
 </script>
 
 <template>
   <div class="top-list">
+    <button
+      v-if="activeItems.length"
+      type="button"
+      class="tl-expand"
+      title="Pop out — full list"
+      aria-label="Pop out"
+      @click="openExpanded"
+    >⤢</button>
     <div v-if="showTabs" class="tabs">
       <button
         v-for="(g, i) in effectiveGroups"
@@ -101,7 +155,14 @@ const showTabs = computed(() => effectiveGroups.value.length > 1);
       </button>
     </div>
     <div class="rows">
-      <div v-for="(it, i) in activeItems" :key="i" class="row" :title="it.name">
+      <div
+        v-for="(it, i) in activeItems"
+        :key="i"
+        class="row"
+        @mouseenter="showTip($event, it.name)"
+        @mousemove="moveTip"
+        @mouseleave="hideTip"
+      >
         <!-- Background fill — trace-waterfall style. The bar paints the
              row from the left, value is proportional to row.value/max,
              and the rank+name+value text overlays the bar. -->
@@ -114,16 +175,84 @@ const showTabs = computed(() => effectiveGroups.value.length > 1);
       </div>
       <p v-if="activeItems.length === 0" class="empty">No data</p>
     </div>
+
+    <Teleport to="body">
+      <div v-if="hoverTip" class="top-tip" :style="tipStyle">{{ hoverTip.text }}</div>
+    </Teleport>
+
+    <!-- Pop-out: full ranked list in a roomy modal with wrapping names. -->
+    <Teleport to="body">
+      <div v-if="expanded" class="tl-modal" @click.self="closeExpanded">
+        <div class="tl-dialog">
+          <header class="tl-head">
+            <span class="tl-title">{{ title || 'Top list' }}</span>
+            <button class="tl-close" aria-label="Close" @click="closeExpanded">×</button>
+          </header>
+          <div v-if="showTabs" class="tabs">
+            <button
+              v-for="(g, i) in effectiveGroups"
+              :key="i"
+              type="button"
+              class="tab"
+              :class="{ on: activeIdx === i }"
+              :title="g.expression ? `${g.label}\n\n${g.expression}` : g.label"
+              @click="activeIdx = i"
+            >
+              {{ g.label }}
+            </button>
+          </div>
+          <div class="rows rows--big">
+            <div v-for="(it, i) in activeItems" :key="i" class="row row--big">
+              <span class="bar-bg" :style="{ width: `${pct(it.value)}%`, background: color }" />
+              <span class="rank">{{ i + 1 }}</span>
+              <span class="name name--wrap">{{ it.name }}</span>
+              <span class="value">
+                {{ fmtMetric(it.value) }}<span v-if="activeUnit" class="unit">{{ activeUnit }}</span>
+              </span>
+            </div>
+            <p v-if="activeItems.length === 0" class="empty">No data</p>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
 .top-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+/* Pop-out affordance — top-right, surfaces on widget hover so it
+ * doesn't clutter the dense default view. */
+.tl-expand {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--sw-fg-3);
+  background: var(--sw-bg-1);
+  border: 1px solid var(--sw-line);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+.top-list:hover .tl-expand {
+  opacity: 1;
+}
+.tl-expand:hover {
+  color: var(--sw-fg-0);
+  border-color: var(--sw-line-2);
 }
 .tabs {
   display: flex;
@@ -231,5 +360,103 @@ const showTabs = computed(() => effectiveGroups.value.length > 1);
   color: var(--sw-fg-3);
   text-align: center;
   margin: 10px 0;
+}
+.top-tip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 420px;
+  padding: 6px 9px;
+  font-family: var(--sw-mono);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--sw-fg-0);
+  background: var(--sw-bg-0, #1c2630);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 5px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  word-break: break-all;
+  pointer-events: none;
+}
+
+/* ── Pop-out modal ───────────────────────────────────────────────── */
+.tl-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 5vh 4vw;
+}
+.tl-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  max-height: 86vh;
+  background: var(--sw-bg-1);
+  border: 1px solid var(--sw-line-2);
+  border-radius: 8px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.tl-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--sw-line);
+}
+.tl-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sw-fg-0);
+  letter-spacing: -0.01em;
+}
+.tl-close {
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--sw-fg-2);
+  background: transparent;
+  border: 1px solid var(--sw-line);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.tl-close:hover {
+  color: var(--sw-fg-0);
+  background: var(--sw-bg-2);
+}
+.tl-dialog .tabs {
+  padding: 8px 14px 6px;
+}
+.rows--big {
+  padding: 8px 14px 14px;
+  gap: 4px;
+  overflow-y: auto;
+}
+.row--big {
+  grid-template-columns: 26px 1fr auto;
+  gap: 10px;
+  font-size: 13px;
+  padding: 7px 10px;
+  min-height: 26px;
+}
+.row--big .rank {
+  font-size: 11.5px;
+}
+.row--big .name {
+  font-size: 13px;
+}
+.row--big .value {
+  font-size: 12.5px;
+}
+.name--wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-all;
 }
 </style>

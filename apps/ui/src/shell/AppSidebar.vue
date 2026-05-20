@@ -194,7 +194,7 @@ const sections: NavSection[] = [
     kicker: 'Platform monitoring',
     links: [
       { icon: 'svc', label: 'Cluster status', to: '/operate/cluster', verb: 'cluster:read' },
-      { icon: 'clock', label: 'Data retention (TTL)', to: '/operate/ttl', verb: 'ttl:read' },
+      { icon: 'clock', label: 'Data retention', to: '/operate/ttl', verb: 'ttl:read' },
       { icon: 'db', label: 'OAP configuration', to: '/operate/config', verb: 'config:read' },
     ],
   },

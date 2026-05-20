@@ -70,7 +70,7 @@ function coldLabel(r: Row): string {
     <header class="page-head">
       <div>
         <div class="kicker">Operate · Data retention</div>
-        <h1>TTL</h1>
+        <h1>Time To Live</h1>
         <p class="lede">
           How long the connected OAP keeps each class of data, reported in whole days.
           <strong>Records</strong> cover event-style data (traces, logs);

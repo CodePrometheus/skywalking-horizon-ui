@@ -628,10 +628,21 @@ function toggleNewTaskLabel(l: string): void {
             </div>
             <div v-if="!filteredProcesses.length" class="empty">No matches.</div>
             <template v-for="p in filteredProcesses" :key="p.id">
+              <!-- Row click toggles the detail panel. Selection (pin/
+                   unpin) lives entirely on the checkbox — clicking the
+                   row body has no effect on selection. This split keeps
+                   the "let me read the details" gesture from
+                   accidentally pinning a process the operator didn't
+                   mean to include in the analyze. The checkbox cell
+                   uses `@click.stop` so clicks inside it don't bubble
+                   up and trigger the row's expand toggle. The chevron
+                   has no own handler — clicking the button bubbles to
+                   the row's expand toggle, giving keyboard users a
+                   focusable expand affordance for free. -->
               <div
                 class="pr"
                 :class="{ on: selectedProcessIds.includes(p.id) }"
-                @click="toggleProcessId(p.id)"
+                @click="toggleProcessExpanded(p.id)"
               >
                 <div class="cc cc-sel" @click.stop>
                   <input
@@ -650,7 +661,6 @@ function toggleNewTaskLabel(l: string): void {
                   :class="{ open: expandedProcessIds.has(p.id) }"
                   :aria-expanded="expandedProcessIds.has(p.id)"
                   :aria-label="expandedProcessIds.has(p.id) ? 'Collapse details' : 'Expand details'"
-                  @click.stop="toggleProcessExpanded(p.id)"
                 >
                   <Icon name="caret" :size="10" />
                 </button>

@@ -31,6 +31,7 @@ import { useSelectedService } from '@/layer/useSelectedService';
 import { bffClient } from '@/api/client';
 import type { PprofTask, PprofTree, ProfileAnalyzationTree } from '@/api/client';
 import ProfileFlameGraph from '@/layer/profiling/ProfileFlameGraph.vue';
+import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
 const layerKey = computed(() => String(route.params.layerKey ?? ''));
@@ -180,7 +181,17 @@ function instanceName(id: string): string {
     <div class="pp-side">
       <div class="side-head between">
         <span>pprof tasks</span>
-        <button class="btn-new" :disabled="!serviceId" @click="showNewTask = true">+ New Task</button>
+        <div class="side-head-actions">
+          <button
+            class="btn-refresh"
+            :class="{ spinning: tasksLoading }"
+            :disabled="!serviceId || tasksLoading"
+            :title="!serviceId ? 'Pick a service first' : tasksLoading ? 'Refreshing…' : 'Refresh task list'"
+            aria-label="Refresh task list"
+            @click="refreshTasks"
+          ><Icon name="refresh" :size="11" /></button>
+          <button class="btn-new" :disabled="!serviceId" @click="showNewTask = true">+ New Task</button>
+        </div>
       </div>
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
@@ -333,6 +344,28 @@ function instanceName(id: string): string {
   background: var(--sw-bg-1);
   color: var(--sw-fg-1);
   cursor: pointer;
+}
+.side-head-actions { display: inline-flex; align-items: center; gap: 6px; }
+.btn-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--sw-line-2);
+  background: var(--sw-bg-1);
+  color: var(--sw-fg-1);
+  cursor: pointer;
+  line-height: 0;
+}
+.btn-refresh:hover:not(:disabled) { border-color: var(--sw-accent); color: var(--sw-accent); }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-refresh.spinning :deep(svg) {
+  animation: prof-refresh-spin 1.6s linear infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes prof-refresh-spin {
+  to { transform: rotate(360deg); }
 }
 .btn-new:hover:not(:disabled) {
   border-color: var(--sw-accent);

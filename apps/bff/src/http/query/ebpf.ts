@@ -322,7 +322,11 @@ export function registerEBPFRoutes(app: FastifyInstance, deps: EBPFRouteDeps): v
 
   // ── network profiling ─────────────────────────────────────────────
   /** List network-profile tasks for a service. Same OAP entry-point as
-   *  ON_CPU/OFF_CPU tasks, just with target=NETWORK + trigger=CONTINUOUS_PROFILING. */
+   *  ON_CPU/OFF_CPU tasks, with target=NETWORK. OAP stores network tasks
+   *  with trigger FIXED_TIME (EBPFProfilingMutationService sets
+   *  TriggerType.FIXED_TIME for createEBPFNetworkProfiling), so the
+   *  list query must filter on FIXED_TIME — CONTINUOUS_PROFILING returns
+   *  nothing and the just-created task never shows up. */
   app.get(
     '/api/layer/:key/ebpf/network/tasks',
     { preHandler: auth },
@@ -350,7 +354,7 @@ export function registerEBPFRoutes(app: FastifyInstance, deps: EBPFRouteDeps): v
             serviceId: serviceId ?? undefined,
             serviceInstanceId: instanceArg || undefined,
             targets: ['NETWORK'],
-            triggerType: 'CONTINUOUS_PROFILING',
+            triggerType: 'FIXED_TIME',
           },
         );
         payload.tasks = data.queryEBPFTasks ?? [];

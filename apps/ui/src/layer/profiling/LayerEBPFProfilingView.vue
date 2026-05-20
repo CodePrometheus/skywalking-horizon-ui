@@ -263,8 +263,15 @@ async function runAnalyze(): Promise<void> {
 // ProfileFlameGraph + ProfileStackTable expect the trace-profile element
 // shape `{id, parentId, codeSignature, count, duration, durationChildExcluded}`.
 // eBPF returns `{id, parentId, symbol, stackType, dumpCount}` — translate.
-function asProfileTrees(): ProfileAnalyzationTree[] {
-  return analyzeTrees.value.map((t) => ({
+//
+// MUST be a computed, not a function called from the template: the
+// FlameGraph re-renders whenever the `trees` prop's reference changes,
+// and a fresh `.map()` array returned by a function would make every
+// parent reactive tick (toolbar chip click, modal open, search input)
+// invalidate the cached draw. A computed gives a stable identity that
+// only changes when `analyzeTrees` itself changes.
+const profileTrees = computed<ProfileAnalyzationTree[]>(() =>
+  analyzeTrees.value.map((t) => ({
     elements: t.elements.map((e) => ({
       id: e.id,
       parentId: e.parentId,
@@ -273,8 +280,25 @@ function asProfileTrees(): ProfileAnalyzationTree[] {
       duration: e.dumpCount,
       durationChildExcluded: e.dumpCount,
     })),
-  }));
-}
+  })),
+);
+
+// Pinning / unpinning a process is a query-shape change; the operator
+// expects the flamegraph to follow that selection without having to
+// click Analyze. Other toolbar inputs (label chips, aggregate, display
+// mode) stay manual — they're filter-tweaks the operator typically
+// stacks up before re-querying. `pickTask` already nulls
+// `selectedProcessIds` via `resetFiltersForTask`; the watcher fires
+// after that reset with an empty list and harmlessly no-ops because
+// the matching set is unchanged from the task-pick analyze run.
+//
+// `deep: true` because toggleProcessId mutates the array in place
+// (push / splice). Without it the watcher only fires when the array
+// reference itself changes, which is never on pin/unpin.
+watch(selectedProcessIds, () => {
+  if (!schedules.value.length) return;
+  void runAnalyze();
+}, { deep: true });
 
 async function submitNewTask(): Promise<void> {
   if (!selectedId.value) {
@@ -308,11 +332,26 @@ async function submitNewTask(): Promise<void> {
   }
 }
 
+// OAP returns `taskStartTime` / `createTime` / schedule `startTime` and
+// `endTime` as standard 1970 ms timestamps (System.currentTimeMillis()
+// in EBPFProfilingMutationService). Render in the browser's local TZ
+// via Intl — explicit `timeZone` left at the browser default and a
+// stable formatter shared across rows (cheaper than a new Date split
+// + manual padding per cell).
+const TIME_FMT = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
 function fmtTime(ms: number): string {
   if (!ms) return '—';
-  const d = new Date(ms);
-  const z = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+  // Intl gives `2026/05/20, 17:00:00` on en-US — normalize to ISO-ish
+  // `2026-05-20 17:00:00` so the layout matches the rest of the UI.
+  return TIME_FMT.format(new Date(ms)).replace(/\//g, '-').replace(', ', ' ');
 }
 function attrLine(p: EBPFProcess): string {
   return (p.attributes ?? []).map((a) => `${a.name}=${a.value}`).join(' · ');
@@ -480,12 +519,12 @@ function toggleNewTaskLabel(l: string): void {
         <template v-if="analyzeTrees.length">
           <ProfileFlameGraph
             v-if="displayMode === 'flame'"
-            :trees="asProfileTrees()"
+            :trees="profileTrees"
             metric-key="count"
           />
           <ProfileStackTable
             v-else
-            :trees="asProfileTrees()"
+            :trees="profileTrees"
             :highlight-top="highlightTop"
             @toggle-highlight="highlightTop = !highlightTop"
           />

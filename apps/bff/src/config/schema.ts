@@ -189,6 +189,8 @@ const rbacSchema = z
           'profile:read',
           'cluster:read',
           'inspect:read',
+          'ttl:read',
+          'config:read',
         ],
         // Configures observability: dashboards, alarm rules, DSL/OAL,
         // diagnostics. Inherits viewer + platform reads so operators
@@ -202,6 +204,8 @@ const rbacSchema = z
           'profile:read',
           'cluster:read',
           'inspect:read',
+          'ttl:read',
+          'config:read',
           'overview:read',
           'overview:write',
           'setup:read',

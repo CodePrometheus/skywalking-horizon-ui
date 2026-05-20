@@ -175,6 +175,18 @@ const shellRoutes: RouteRecordRaw[] = [
     name: 'inspect',
     component: () => import('@/features/operate/inspect/InspectView.vue'),
   },
+  // Data retention (TTL) — query-port read of getRecordsTTL/getMetricsTTL.
+  {
+    path: 'operate/ttl',
+    name: 'ttl',
+    component: () => import('@/features/operate/ttl/TtlView.vue'),
+  },
+  // OAP runtime config — admin-port /debugging/config/dump, read-only.
+  {
+    path: 'operate/config',
+    name: 'oap-config',
+    component: () => import('@/features/operate/config/ConfigView.vue'),
+  },
   // Live debugger — gated on `dsl-debugging`. History is local-only
   // (browser localStorage) so it stays useful even when admin is down.
   // Declared before the catch-all tab route so it doesn't shadow.

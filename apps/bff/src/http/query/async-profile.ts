@@ -374,15 +374,18 @@ export function registerAsyncProfileRoutes(
     { preHandler: auth },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const body = req.body as
-        | { taskId: string; instanceIds: string[]; eventType: string }
+        | { taskId: string; instanceIds: string[] }
         | undefined;
       const payload: PprofAnalyzeResponse = { tree: null, reachable: true };
       if (!body?.taskId || !body.instanceIds?.length) return reply.send(payload);
       const opts = buildOapOpts(deps.config.current, deps.fetch);
       try {
+        // PprofAnalyzationRequest is taskId + instanceIds only — pprof
+        // tasks are single-event, so there's no eventType selector here.
+        const request = { taskId: body.taskId, instanceIds: body.instanceIds };
         const data = await graphqlPost<{
           analysisResult: { tree: PprofAnalyzeResponse['tree'] } | null;
-        }>(opts, GET_PPROF_ANALYZE, { request: body });
+        }>(opts, GET_PPROF_ANALYZE, { request });
         payload.tree = data.analysisResult?.tree ?? null;
         return reply.send(payload);
       } catch (err) {

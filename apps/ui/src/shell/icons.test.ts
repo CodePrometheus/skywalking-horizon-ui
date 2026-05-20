@@ -23,7 +23,7 @@ describe('sectionIcon — L0 header icon mapping', () => {
     expect(sectionIcon('Overviews')).toBe('dash');
     expect(sectionIcon('overview')).toBe('dash');
     expect(sectionIcon('Layers')).toBe('svc');
-    expect(sectionIcon('Platform monitoring')).toBe('flame');
+    expect(sectionIcon('Platform monitoring')).toBe('cluster');
     expect(sectionIcon('Operate')).toBe('set');
     expect(sectionIcon('Dashboard setup')).toBe('metric');
     expect(sectionIcon('Admin')).toBe('user');

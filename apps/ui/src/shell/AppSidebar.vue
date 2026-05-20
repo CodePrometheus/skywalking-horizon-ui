@@ -187,10 +187,20 @@ interface NavSection {
 // requires (see apps/bff/src/rbac/route-policy.ts). The sidebar removes
 // rows the user can't read; the BFF enforces the same verbs server-side.
 const sections: NavSection[] = [
+  // OAP self-observability diagnostics (the backend itself, not the
+  // observed services). Rendered above the per-layer self-observability
+  // dashboards. All three are read-only and gated on maintainer-tier verbs.
+  {
+    kicker: 'Platform monitoring',
+    links: [
+      { icon: 'svc', label: 'Cluster status', to: '/operate/cluster', verb: 'cluster:read' },
+      { icon: 'clock', label: 'Data retention (TTL)', to: '/operate/ttl', verb: 'ttl:read' },
+      { icon: 'db', label: 'OAP configuration', to: '/operate/config', verb: 'config:read' },
+    ],
+  },
   {
     kicker: 'Operate',
     links: [
-      { icon: 'svc', label: 'Cluster status', to: '/operate/cluster', verb: 'cluster:read' },
       { icon: 'alert', label: 'Alerting rules', to: '/operate/alerting-rules', verb: 'alarm-rule:read' },
       {
         icon: 'flame',
@@ -258,6 +268,16 @@ const visibleSections = computed<NavSection[]>(() => {
   }
   return out;
 });
+
+// Platform monitoring (OAP self-observability) renders at the top of the
+// operate area — above the per-layer self-observability dashboards — so
+// it's pulled out of the generic section loop below.
+const platformSection = computed<NavSection | undefined>(() =>
+  visibleSections.value.find((s) => s.kicker === 'Platform monitoring'),
+);
+const menuSections = computed<NavSection[]>(() =>
+  visibleSections.value.filter((s) => s.kicker !== 'Platform monitoring'),
+);
 
 const openNavL1 = ref<Set<string>>(new Set());
 function isNavL1Open(to: string): boolean { return openNavL1.value.has(to); }
@@ -623,15 +643,29 @@ watch(
         </div>
       </template>
 
-      <!-- Platform monitoring (OAP self-observability layers) is the
-           maintainer tier, not the viewer data catalog. Gate on
-           `cluster:read` — the verb horizon.yaml grants maintainer /
-           operator / admin but not viewer. -->
-      <template v-if="operateLayers.length > 0 && auth.hasVerb('cluster:read')">
+      <!-- Platform monitoring — OAP self-observability under one header:
+           backend diagnostics (cluster status, data retention, runtime
+           config) on top, then the per-layer so11y_* agent dashboards.
+           Maintainer tier: diagnostics rows are verb-gated individually;
+           the layer dashboards gate on `cluster:read` (granted to
+           maintainer / operator / admin, not viewer). -->
+      <template v-if="platformSection || (operateLayers.length > 0 && auth.hasVerb('cluster:read'))">
         <div class="sw-nav-section sw-nav-section--icon">
           <Icon :name="sectionIcon('Platform monitoring')" />
           <span>Platform monitoring</span>
         </div>
+        <template v-if="platformSection">
+          <RouterLink
+            v-for="row in platformSection.links"
+            :key="row.to"
+            :to="row.to"
+            class="sw-nav-item"
+            :class="{ 'is-active': row.activeWhen ? row.activeWhen(route.path) : isActiveExact(row.to) }"
+          >
+            <Icon :name="row.icon" /><span>{{ row.label }}</span>
+          </RouterLink>
+        </template>
+        <template v-if="operateLayers.length > 0 && auth.hasVerb('cluster:read')">
         <template v-for="L in operateLayers" :key="`op:${L.key}`">
           <RouterLink
             v-if="isSingleFeatureLayer(L)"
@@ -689,9 +723,10 @@ watch(
             </RouterLink>
           </div>
         </template>
+        </template>
       </template>
 
-      <template v-for="entry in visibleSections" :key="`m:${entry.kicker}`">
+      <template v-for="entry in menuSections" :key="`m:${entry.kicker}`">
         <div class="sw-nav-section sw-nav-section--icon">
           <Icon :name="sectionIcon(entry.kicker)" />
           <span>{{ entry.kicker }}</span>

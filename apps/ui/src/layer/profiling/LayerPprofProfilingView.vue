@@ -31,6 +31,7 @@ import { useSelectedService } from '@/layer/useSelectedService';
 import { bffClient } from '@/api/client';
 import type { PprofTask, PprofTree, ProfileAnalyzationTree } from '@/api/client';
 import ProfileFlameGraph from '@/layer/profiling/ProfileFlameGraph.vue';
+import { useNewTaskPoll } from '@/layer/profiling/useNewTaskPoll';
 import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
@@ -44,7 +45,6 @@ const currentTask = ref<PprofTask | null>(null);
 const tasksLoading = ref(false);
 
 const selectedInstances = ref<string[]>([]);
-const eventType = ref<string>('CPU');
 const tree = ref<PprofTree | null>(null);
 const analyzeError = ref<string | null>(null);
 const analyzeLoading = ref(false);
@@ -52,18 +52,30 @@ const analyzeLoading = ref(false);
 const showNewTask = ref(false);
 const newTask = reactive({
   instances: [] as string[],
-  duration: 60,
-  events: ['CPU'] as string[],
-  dumpPeriod: 10,
+  // OAP measures pprof duration in MINUTES (capped at 15).
+  duration: 5,
+  // pprof takes exactly ONE event per task (OAP's PprofEventType is a
+  // scalar enum, not a list).
+  event: 'CPU',
+  // Sampling rate for BLOCK (ns/sample) / MUTEX (occurrences/sample);
+  // 1 samples every event.
+  dumpPeriod: 1,
 });
 const newTaskError = ref<string | null>(null);
+const { polling, pollRound, pollForNewTask } = useNewTaskPoll();
 
 const PPROF_EVENTS = ['CPU', 'HEAP', 'BLOCK', 'GOROUTINE', 'MUTEX', 'ALLOCS', 'THREADCREATE'];
+// Per OAP: duration applies to CPU/BLOCK/MUTEX; dumpPeriod to BLOCK/MUTEX.
+const DURATION_REQUIRED = ['CPU', 'BLOCK', 'MUTEX'];
+const DUMP_PERIOD_REQUIRED = ['BLOCK', 'MUTEX'];
+const newNeedsDuration = computed(() => DURATION_REQUIRED.includes(newTask.event));
+const newNeedsDumpPeriod = computed(() => DUMP_PERIOD_REQUIRED.includes(newTask.event));
+// Values are MINUTES — OAP rejects pprof durations over 15 minutes.
 const DURATION_OPTS = [
-  { v: 30, label: '30 sec' },
-  { v: 60, label: '1 min' },
-  { v: 300, label: '5 min' },
-  { v: 600, label: '10 min' },
+  { v: 1, label: '1 min' },
+  { v: 5, label: '5 min' },
+  { v: 10, label: '10 min' },
+  { v: 15, label: '15 min' },
 ];
 
 watch(
@@ -83,7 +95,6 @@ async function refreshTasks(): Promise<void> {
     currentTask.value = tasks.value[0] ?? null;
     if (currentTask.value) {
       selectedInstances.value = [...(currentTask.value.serviceInstanceIds ?? [])];
-      eventType.value = currentTask.value.events?.[0] ?? 'CPU';
     }
     tree.value = null;
   } catch (e) {
@@ -101,7 +112,6 @@ async function runAnalyze(): Promise<void> {
     const resp = await bffClient.pprof.analyze({
       taskId: currentTask.value.id,
       instanceIds: selectedInstances.value,
-      eventType: eventType.value,
     });
     if (!resp.reachable && resp.error) analyzeError.value = resp.error;
     tree.value = resp.tree;
@@ -128,11 +138,6 @@ const profileTrees = computed<ProfileAnalyzationTree[]>(() => {
   ];
 });
 
-function toggleEvent(e: string): void {
-  const i = newTask.events.indexOf(e);
-  if (i === -1) newTask.events.push(e);
-  else newTask.events.splice(i, 1);
-}
 function toggleInstance(id: string, dst: 'filter' | 'new'): void {
   const target = dst === 'filter' ? selectedInstances.value : newTask.instances;
   const i = target.indexOf(id);
@@ -141,18 +146,19 @@ function toggleInstance(id: string, dst: 'filter' | 'new'): void {
 }
 
 async function submitNewTask(): Promise<void> {
-  if (!serviceId.value || !newTask.instances.length || !newTask.events.length) {
-    newTaskError.value = 'Pick a service, instances, and events.';
+  if (!serviceId.value || !newTask.instances.length || !newTask.event) {
+    newTaskError.value = 'Pick a service, instances, and an event.';
     return;
   }
   newTaskError.value = null;
+  const idsBefore = new Set(tasks.value.map((t) => t.id));
   try {
     const resp = await bffClient.pprof.create(layerKey.value, {
       serviceId: serviceId.value,
       serviceInstanceIds: newTask.instances,
-      duration: Number(newTask.duration),
-      events: newTask.events,
-      dumpPeriod: Number(newTask.dumpPeriod),
+      events: newTask.event,
+      ...(newNeedsDuration.value ? { duration: Number(newTask.duration) } : {}),
+      ...(newNeedsDumpPeriod.value ? { dumpPeriod: Number(newTask.dumpPeriod) } : {}),
     });
     if (resp.errorReason) {
       newTaskError.value = resp.errorReason;
@@ -160,6 +166,11 @@ async function submitNewTask(): Promise<void> {
     }
     showNewTask.value = false;
     await refreshTasks();
+    await pollForNewTask({
+      idsBefore,
+      refresh: refreshTasks,
+      currentIds: () => tasks.value.map((t) => t.id),
+    });
   } catch (e) {
     newTaskError.value = e instanceof Error ? e.message : String(e);
   }
@@ -193,6 +204,7 @@ function instanceName(id: string): string {
           <button class="btn-new" :disabled="!serviceId" @click="showNewTask = true">+ New Task</button>
         </div>
       </div>
+      <div v-if="polling" class="poll-hint">Waiting for new task… ({{ pollRound }}/4)</div>
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
       <div v-else-if="!tasks.length" class="side-empty">
@@ -206,12 +218,15 @@ function instanceName(id: string): string {
           @click="currentTask = t; selectedInstances = [...(t.serviceInstanceIds ?? [])]; tree = null"
         >
           <div class="row1">
-            <span class="t-tag">{{ t.events?.join(',') }}</span>
+            <span class="t-tag">{{ t.events }}</span>
             <span class="ep">{{ t.serviceInstanceIds?.length ?? 0 }} instance{{ (t.serviceInstanceIds?.length ?? 0) === 1 ? '' : 's' }}</span>
           </div>
           <div class="row2">
             <span>{{ fmtTime(t.createTime) }}</span>
-            <span class="muted">· {{ t.duration }}s · {{ t.dumpPeriod ?? '?' }}ms</span>
+            <span class="muted">
+              <template v-if="t.duration != null">· {{ t.duration }}min</template>
+              <template v-if="t.dumpPeriod != null"> · rate {{ t.dumpPeriod }}</template>
+            </span>
           </div>
         </li>
       </ul>
@@ -234,9 +249,7 @@ function instanceName(id: string): string {
         </div>
         <div class="tb-block">
           <label class="lbl">Event</label>
-          <select v-model="eventType" class="sel">
-            <option v-for="e in PPROF_EVENTS" :key="e" :value="e">{{ e }}</option>
-          </select>
+          <span class="event-fixed">{{ currentTask?.events ?? '—' }}</span>
         </div>
         <button class="btn-primary" :disabled="analyzeLoading || !currentTask" @click="runAnalyze">
           {{ analyzeLoading ? 'Analyzing…' : 'Analyze' }}
@@ -246,7 +259,7 @@ function instanceName(id: string): string {
       <div class="result">
         <ProfileFlameGraph v-if="profileTrees.length" :trees="profileTrees" metric-key="count" />
         <div v-else-if="!analyzeLoading" class="result-empty">
-          {{ currentTask ? 'Pick instances + event, then click Analyze.' : 'Select a task.' }}
+          {{ currentTask ? 'Pick instances, then click Analyze.' : 'Select a task.' }}
         </div>
       </div>
     </div>
@@ -273,29 +286,34 @@ function instanceName(id: string): string {
             <span v-if="!instances.instances.value.length" class="muted">No instances available.</span>
           </div>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Duration</label>
-            <select v-model.number="newTask.duration" class="sel">
-              <option v-for="o in DURATION_OPTS" :key="o.v" :value="o.v">{{ o.label }}</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Dump period (ms)</label>
-            <input type="number" min="1" v-model.number="newTask.dumpPeriod" class="ti-input" />
-          </div>
-        </div>
         <div class="field">
-          <label>Events</label>
+          <label>Event (one per task)</label>
           <div class="chip-row">
             <button
               v-for="e in PPROF_EVENTS"
               :key="e"
               type="button"
               class="chip"
-              :class="{ on: newTask.events.includes(e) }"
-              @click="toggleEvent(e)"
+              :class="{ on: newTask.event === e }"
+              @click="newTask.event = e"
             >{{ e }}</button>
+          </div>
+        </div>
+        <div class="field-row">
+          <div v-if="newNeedsDuration" class="field">
+            <label>Duration</label>
+            <select v-model.number="newTask.duration" class="sel">
+              <option v-for="o in DURATION_OPTS" :key="o.v" :value="o.v">{{ o.label }}</option>
+            </select>
+          </div>
+          <div v-if="newNeedsDumpPeriod" class="field">
+            <label>Dump period (rate)</label>
+            <input type="number" min="1" v-model.number="newTask.dumpPeriod" class="ti-input" />
+            <span class="hint">
+              {{ newTask.event === 'BLOCK'
+                ? 'Blocked-ns sampling rate; 1 samples every event.'
+                : 'Contention-occurrences sampling rate; 1 samples every event.' }}
+            </span>
           </div>
         </div>
         <div v-if="newTaskError" class="dlg-err">{{ newTaskError }}</div>
@@ -374,6 +392,13 @@ function instanceName(id: string): string {
 .btn-new:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.poll-hint {
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: var(--sw-accent);
+  background: var(--sw-bg-2);
+  border-bottom: 1px solid var(--sw-line);
 }
 .side-err,
 .side-empty {
@@ -483,6 +508,12 @@ function instanceName(id: string): string {
   background: var(--sw-accent);
   border-color: var(--sw-accent);
   color: #fff;
+}
+.event-fixed {
+  font-size: 11.5px;
+  font-family: var(--sw-mono);
+  color: var(--sw-fg-0);
+  padding: 4px 0;
 }
 .sel,
 .ti-input {
@@ -596,6 +627,13 @@ function instanceName(id: string): string {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--sw-fg-3);
+}
+.field .hint {
+  font-size: 10px;
+  color: var(--sw-fg-3);
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.4;
 }
 .field-row {
   display: flex;

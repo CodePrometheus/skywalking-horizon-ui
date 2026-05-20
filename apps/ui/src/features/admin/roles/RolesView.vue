@@ -73,6 +73,8 @@ const MENU_GATES: ReadonlyArray<{ label: string; verb: string | null }> = [
   { label: 'Cluster status', verb: 'cluster:read' },
   { label: 'Platform monitoring (layers)', verb: 'cluster:read' },
   { label: 'Metrics Inspect', verb: 'inspect:read' },
+  { label: 'Data retention (TTL)', verb: 'ttl:read' },
+  { label: 'OAP configuration', verb: 'config:read' },
   { label: 'Alerting rules', verb: 'alarm-rule:read' },
   { label: 'Live debugger · Capture history', verb: 'live-debug:read' },
   { label: 'DSL Management', verb: 'rule:read' },

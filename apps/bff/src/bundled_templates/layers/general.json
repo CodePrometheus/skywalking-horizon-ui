@@ -20,7 +20,6 @@
     "traceProfiling": true,
     "ebpfProfiling": true,
     "asyncProfiling": true,
-    "networkProfiling": true,
     "pprofProfiling": true
   },
   "layer-header": {

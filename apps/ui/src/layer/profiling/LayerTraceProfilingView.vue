@@ -55,6 +55,7 @@ import type {
 import ProfileStackTable from '@/layer/profiling/ProfileStackTable.vue';
 import ProfileFlameGraph from '@/layer/profiling/ProfileFlameGraph.vue';
 import NativeTraceWaterfall from '@/layer/traces/NativeTraceWaterfall.vue';
+import { useNewTaskPoll } from '@/layer/profiling/useNewTaskPoll';
 import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
@@ -102,6 +103,7 @@ const tasks = ref<ProfileTask[]>([]);
 const tasksError = ref<string | null>(null);
 const tasksLoading = ref(false);
 const currentTask = ref<ProfileTask | null>(null);
+const { polling, pollRound, pollForNewTask } = useNewTaskPoll();
 
 const segments = ref<ProfileSegment[]>([]);
 const segmentsLoading = ref(false);
@@ -292,6 +294,7 @@ async function submitNewTask(): Promise<void> {
     return;
   }
   taskCreateError.value = null;
+  const idsBefore = new Set(tasks.value.map((t) => t.id));
   try {
     const startTime =
       newTask.monitorTime === 'now' ? Date.now() : newTask.monitorTimeAt.getTime();
@@ -315,6 +318,11 @@ async function submitNewTask(): Promise<void> {
     showNewTask.value = false;
     resetNewTask();
     await refreshTasks();
+    await pollForNewTask({
+      idsBefore,
+      refresh: refreshTasks,
+      currentIds: () => tasks.value.map((t) => t.id),
+    });
   } catch (e) {
     taskCreateError.value = e instanceof Error ? e.message : String(e);
   }
@@ -354,6 +362,7 @@ function fmtTime(ms: number): string {
             >+ New Task</button>
           </div>
         </div>
+        <div v-if="polling" class="poll-hint">Waiting for new task… ({{ pollRound }}/4)</div>
         <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
         <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
         <div v-else-if="!tasks.length" class="side-empty">
@@ -664,6 +673,13 @@ function fmtTime(ms: number): string {
   font-weight: 500;
   font-size: 10.5px;
   color: var(--sw-fg-3);
+}
+.poll-hint {
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: var(--sw-accent);
+  background: var(--sw-bg-2);
+  border-bottom: 1px solid var(--sw-line);
 }
 .side-err {
   padding: 8px 12px;

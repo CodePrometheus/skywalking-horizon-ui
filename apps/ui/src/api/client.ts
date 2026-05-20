@@ -78,6 +78,7 @@ import { PprofApi } from './scopes/pprof';
 import { DslApi } from './scopes/dsl';
 import { LiveDebugApi } from './scopes/live-debug';
 import { InspectApi } from './scopes/inspect';
+import { OapOpsApi } from './scopes/oap-ops';
 import { AlarmsApi } from './scopes/alarms';
 import { LayerTemplatesApi } from './scopes/layer-template';
 import { ConfigsApi } from './scopes/configs';
@@ -93,6 +94,11 @@ export type {
   LayerCaps,
   LayerSlots,
   OapInfo,
+  RecordsTTL,
+  MetricsTTL,
+  OapTtlResponse,
+  OapConfigEntry,
+  OapConfigResponse,
   SetupResponse,
   SetupSavePayload,
   LayerConfig,
@@ -667,6 +673,7 @@ export class BffClient {
   readonly dsl = new DslApi(this);
   readonly liveDebug = new LiveDebugApi(this);
   readonly inspect = new InspectApi(this);
+  readonly oapOps = new OapOpsApi(this);
   readonly alarms = new AlarmsApi(this);
   readonly layerTemplates = new LayerTemplatesApi(this);
   readonly configs = new ConfigsApi(this);

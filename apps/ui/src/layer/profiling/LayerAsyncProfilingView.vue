@@ -36,6 +36,7 @@ import type {
   ProfileAnalyzationTree,
 } from '@/api/client';
 import ProfileFlameGraph from '@/layer/profiling/ProfileFlameGraph.vue';
+import { useNewTaskPoll } from '@/layer/profiling/useNewTaskPoll';
 import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
@@ -62,6 +63,7 @@ const newTask = reactive({
   execArgs: '',
 });
 const newTaskError = ref<string | null>(null);
+const { polling, pollRound, pollForNewTask } = useNewTaskPoll();
 
 const DURATION_OPTS = [
   { v: 30, label: '30 sec' },
@@ -170,6 +172,7 @@ async function submitNewTask(): Promise<void> {
     return;
   }
   newTaskError.value = null;
+  const idsBefore = new Set(tasks.value.map((t) => t.id));
   try {
     const resp = await bffClient.asyncProfile.create(layerKey.value, {
       serviceId: serviceId.value,
@@ -184,6 +187,11 @@ async function submitNewTask(): Promise<void> {
     }
     showNewTask.value = false;
     await refreshTasks();
+    await pollForNewTask({
+      idsBefore,
+      refresh: refreshTasks,
+      currentIds: () => tasks.value.map((t) => t.id),
+    });
   } catch (e) {
     newTaskError.value = e instanceof Error ? e.message : String(e);
   }
@@ -221,6 +229,7 @@ function instanceName(id: string): string {
           >+ New Task</button>
         </div>
       </div>
+      <div v-if="polling" class="poll-hint">Waiting for new task… ({{ pollRound }}/4)</div>
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
       <div v-else-if="!tasks.length" class="side-empty">
@@ -414,6 +423,13 @@ function instanceName(id: string): string {
 .btn-new:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.poll-hint {
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: var(--sw-accent);
+  background: var(--sw-bg-2);
+  border-bottom: 1px solid var(--sw-line);
 }
 .side-err,
 .side-empty {

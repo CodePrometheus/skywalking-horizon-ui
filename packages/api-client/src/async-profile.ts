@@ -111,8 +111,11 @@ export interface PprofTask {
   serviceId: string;
   serviceInstanceIds: string[];
   createTime: number;
-  events: string[];
-  duration: number;
+  // OAP's `PprofEventType` is a single scalar enum (not a list, unlike
+  // async-profiler) — one event per pprof task: CPU / HEAP / BLOCK /
+  // MUTEX / GOROUTINE / ALLOCS / THREADCREATE.
+  events: string;
+  duration?: number;
   dumpPeriod?: number;
 }
 export interface PprofProgress {
@@ -133,8 +136,10 @@ export interface PprofTree {
 export interface PprofTaskCreationRequest {
   serviceId: string;
   serviceInstanceIds: string[];
-  duration: number;
-  events: string[];
+  // duration is required for CPU / BLOCK / MUTEX; dumpPeriod for BLOCK /
+  // MUTEX. Omit them for the events that don't use them.
+  duration?: number;
+  events: string;
   dumpPeriod?: number;
 }
 export interface PprofTaskListResponse {

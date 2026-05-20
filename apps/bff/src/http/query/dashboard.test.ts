@@ -232,7 +232,7 @@ describe('parseLabeledSeries — relabels() multi-result extraction', () => {
 });
 
 describe('parseTopList — owner-scope priority for display names', () => {
-  it('endpoint owner → "service · endpoint"', () => {
+  it('multi-service endpoint owners → "service · endpoint" (prefix disambiguates)', () => {
     const r: MqeResultShape = {
       type: 'SORTED_LIST',
       results: [
@@ -242,11 +242,42 @@ describe('parseTopList — owner-scope priority for display names', () => {
               value: '100',
               owner: { scope: 'Endpoint', serviceName: 'frontend', endpointName: '/api/order' },
             },
+            {
+              value: '80',
+              owner: { scope: 'Endpoint', serviceName: 'backend', endpointName: '/api/pay' },
+            },
           ],
         },
       ],
     };
-    expect(parseTopList(r)).toEqual([{ name: 'frontend · /api/order', value: 100 }]);
+    expect(parseTopList(r)).toEqual([
+      { name: 'frontend · /api/order', value: 100 },
+      { name: 'backend · /api/pay', value: 80 },
+    ]);
+  });
+
+  it('single-service endpoint owners → endpoint alone (redundant prefix dropped)', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [
+        {
+          values: [
+            {
+              value: '100',
+              owner: { scope: 'Endpoint', serviceName: 'frontend', endpointName: '/api/order' },
+            },
+            {
+              value: '60',
+              owner: { scope: 'Endpoint', serviceName: 'frontend', endpointName: '/api/pay' },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseTopList(r)).toEqual([
+      { name: '/api/order', value: 100 },
+      { name: '/api/pay', value: 60 },
+    ]);
   });
 
   it('endpoint owner without serviceName → endpoint alone', () => {
@@ -261,7 +292,7 @@ describe('parseTopList — owner-scope priority for display names', () => {
     expect(parseTopList(r)).toEqual([{ name: '/loose', value: 5 }]);
   });
 
-  it('instance owner → "service · instance"', () => {
+  it('multi-service instance owners → "service · instance" (prefix disambiguates)', () => {
     const r: MqeResultShape = {
       type: 'SORTED_LIST',
       results: [
@@ -271,11 +302,42 @@ describe('parseTopList — owner-scope priority for display names', () => {
               value: '7',
               owner: { scope: 'ServiceInstance', serviceName: 'svc-a', serviceInstanceName: 'pod-1' },
             },
+            {
+              value: '3',
+              owner: { scope: 'ServiceInstance', serviceName: 'svc-b', serviceInstanceName: 'pod-2' },
+            },
           ],
         },
       ],
     };
-    expect(parseTopList(r)).toEqual([{ name: 'svc-a · pod-1', value: 7 }]);
+    expect(parseTopList(r)).toEqual([
+      { name: 'svc-a · pod-1', value: 7 },
+      { name: 'svc-b · pod-2', value: 3 },
+    ]);
+  });
+
+  it('single-service instance owners → instance alone (redundant prefix dropped)', () => {
+    const r: MqeResultShape = {
+      type: 'SORTED_LIST',
+      results: [
+        {
+          values: [
+            {
+              value: '7',
+              owner: { scope: 'ServiceInstance', serviceName: 'svc-a', serviceInstanceName: 'pod-1' },
+            },
+            {
+              value: '4',
+              owner: { scope: 'ServiceInstance', serviceName: 'svc-a', serviceInstanceName: 'pod-2' },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseTopList(r)).toEqual([
+      { name: 'pod-1', value: 7 },
+      { name: 'pod-2', value: 4 },
+    ]);
   });
 
   it('service-only owner → service name', () => {

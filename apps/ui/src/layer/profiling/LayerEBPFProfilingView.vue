@@ -46,6 +46,7 @@ import type {
 } from '@/api/client';
 import ProfileFlameGraph from '@/layer/profiling/ProfileFlameGraph.vue';
 import ProfileStackTable from '@/layer/profiling/ProfileStackTable.vue';
+import { useNewTaskPoll } from '@/layer/profiling/useNewTaskPoll';
 import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
@@ -186,6 +187,7 @@ const newTask = reactive({
   monitorMinutes: 10,
 });
 const newTaskError = ref<string | null>(null);
+const { polling, pollRound, pollForNewTask } = useNewTaskPoll();
 
 watch(
   () => layerKey.value + '|' + (selectedId.value ?? ''),
@@ -393,6 +395,7 @@ async function submitNewTask(): Promise<void> {
   newTaskError.value = null;
   const start =
     newTask.monitorTime === 'now' ? Date.now() : newTask.monitorTimeAt.getTime();
+  const idsBefore = new Set(tasks.value.map((t) => t.taskId));
   try {
     const resp = await bffClient.ebpf.create(layerKey.value, {
       serviceId: selectedId.value,
@@ -412,6 +415,11 @@ async function submitNewTask(): Promise<void> {
     showNewTask.value = false;
     newTask.labels = [];
     await refreshTasks();
+    await pollForNewTask({
+      idsBefore,
+      refresh: refreshTasks,
+      currentIds: () => tasks.value.map((t) => t.taskId),
+    });
   } catch (e) {
     newTaskError.value = e instanceof Error ? e.message : String(e);
   }
@@ -493,6 +501,7 @@ function toggleNewTaskLabel(l: string): void {
           >+ New Task</button>
         </div>
       </div>
+      <div v-if="polling" class="poll-hint">Waiting for new task… ({{ pollRound }}/4)</div>
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
       <div v-else-if="!tasks.length" class="side-empty">
@@ -879,6 +888,13 @@ function toggleNewTaskLabel(l: string): void {
 }
 @keyframes ebpf-refresh-spin {
   to { transform: rotate(360deg); }
+}
+.poll-hint {
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: var(--sw-accent);
+  background: var(--sw-bg-2);
+  border-bottom: 1px solid var(--sw-line);
 }
 .side-err,
 .side-empty {

@@ -31,7 +31,7 @@ export function sectionIcon(label: string): IconName {
   const k = label.toLowerCase();
   if (k === 'overviews' || k === 'overview') return 'dash';
   if (k === 'layers') return 'svc';
-  if (k === 'platform monitoring') return 'flame';
+  if (k === 'platform monitoring') return 'cluster';
   if (k === 'operate') return 'set';
   if (k === 'dashboard setup') return 'metric';
   if (k === 'admin') return 'user';

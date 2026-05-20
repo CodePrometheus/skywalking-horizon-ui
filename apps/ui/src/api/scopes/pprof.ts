@@ -53,7 +53,6 @@ export class PprofApi {
   analyze(body: {
     taskId: string;
     instanceIds: string[];
-    eventType: string;
   }): Promise<PprofAnalyzeResponse> {
     return this.bff.request<PprofAnalyzeResponse>('POST', '/api/pprof/analyze', body);
   }

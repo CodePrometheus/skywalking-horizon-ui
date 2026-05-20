@@ -57,6 +57,8 @@ export const VERBS = {
   // Platform monitoring (read-only screens that focus on OAP itself).
   clusterRead: 'cluster:read',
   inspectRead: 'inspect:read',
+  ttlRead: 'ttl:read',
+  configRead: 'config:read',
 
   // Admin surface
   userRead: 'user:read',

@@ -98,6 +98,13 @@ export type {
   LogFacetsResponse,
 } from './logs.js';
 export type { OapInfo, OapCapabilities } from './oap-info.js';
+export type {
+  RecordsTTL,
+  MetricsTTL,
+  OapTtlResponse,
+  OapConfigEntry,
+  OapConfigResponse,
+} from './oap-ops.js';
 export type { PreflightModule, PreflightResult } from './preflight.js';
 export type {
   ProfileTask,

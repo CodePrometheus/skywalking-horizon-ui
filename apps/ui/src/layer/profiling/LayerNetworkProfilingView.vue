@@ -46,6 +46,7 @@ import type {
 } from '@/api/client';
 import ProcessTopologyGraph from '@/layer/profiling/ProcessTopologyGraph.vue';
 import TimeChart from '@/components/charts/TimeChart.vue';
+import { useNewTaskPoll } from '@/layer/profiling/useNewTaskPoll';
 import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
@@ -284,6 +285,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEdgeKeydown));
 // ── New task modal ────────────────────────────────────────────────
 const showNewTask = ref(false);
 const newTaskError = ref<string | null>(null);
+const { polling, pollRound, pollForNewTask } = useNewTaskPoll();
 // OAP's `EBPFNetworkDataCollectingSettings.requireCompleteRequest` and
 // `requireCompleteResponse` are `Boolean!` — non-null. Every sampling
 // row MUST carry the settings block, otherwise
@@ -307,6 +309,7 @@ async function submitNewTask(): Promise<void> {
     return;
   }
   newTaskError.value = null;
+  const idsBefore = new Set(tasks.value.map((t) => t.taskId));
   try {
     const resp = await bffClient.networkProfile.create({
       instanceId: selectedInstanceId.value,
@@ -322,6 +325,11 @@ async function submitNewTask(): Promise<void> {
     }
     showNewTask.value = false;
     await refreshTasks();
+    await pollForNewTask({
+      idsBefore,
+      refresh: refreshTasks,
+      currentIds: () => tasks.value.map((t) => t.taskId),
+    });
   } catch (e) {
     newTaskError.value = e instanceof Error ? e.message : String(e);
   }
@@ -369,6 +377,7 @@ function fmtTime(ms: number): string {
           >+ New Task</button>
         </div>
       </div>
+      <div v-if="polling" class="poll-hint">Waiting for new task… ({{ pollRound }}/4)</div>
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
       <div v-else-if="!tasks.length" class="side-empty">
@@ -595,6 +604,13 @@ function fmtTime(ms: number): string {
 .btn-new:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.poll-hint {
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: var(--sw-accent);
+  background: var(--sw-bg-2);
+  border-bottom: 1px solid var(--sw-line);
 }
 .side-err,
 .side-empty {

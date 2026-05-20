@@ -37,7 +37,10 @@ import * as d3 from 'd3';
 import type { ProcessCall, ProcessNode } from '@/api/client';
 
 interface Pt { x: number; y: number }
-type PositionedNode = ProcessNode & Pt;
+// `_ox/_oy` = offset from the pod-boundary centre, stored for external
+// peers so they rigidly follow the boundary when it's recomputed during
+// an inside-node drag (they orbit the pod, never end up inside it).
+type PositionedNode = ProcessNode & Pt & { _ox?: number; _oy?: number };
 interface PositionedCall {
   id: string;
   source: PositionedNode;
@@ -138,7 +141,15 @@ function layout(o: Pt): PositionedNode[] {
     n.y = p.y;
   });
 
-  return [...inside, ...outside];
+  // Freeze each external peer's offset from the initial boundary centre
+  // so it follows the boundary when that's recomputed mid-drag.
+  positioned = [...inside, ...outside];
+  const b = insideBoundary();
+  for (const n of outside) {
+    n._ox = n.x - b.cx;
+    n._oy = n.y - b.cy;
+  }
+  return positioned;
 }
 
 /** Max distance from `o` to any inside cell centre. */
@@ -234,6 +245,13 @@ function redrawBoundary(): void {
   const b = insideBoundary();
   boundarySel?.attr('d', hexCellPath(b.cx, b.cy, b.r));
   boundaryLabelSel?.attr('x', b.cx).attr('y', b.cy + b.r + 16);
+  // External peers ride the boundary centre so they keep orbiting the
+  // pod as inside cells are dragged around.
+  for (const n of positioned) {
+    if (isInside(n) || n._ox === undefined || n._oy === undefined) continue;
+    n.x = b.cx + n._ox;
+    n.y = b.cy + n._oy;
+  }
 }
 function refreshPositions(): void {
   edgeSel?.attr('d', edgePath);
@@ -304,7 +322,7 @@ function render(): void {
     .attr('text-anchor', 'middle')
     .attr('fill', 'var(--sw-fg-2, #b4b7c2)')
     .style('font-family', 'var(--sw-mono, monospace)')
-    .style('font-size', '11px')
+    .style('font-size', '13px')
     .text(instanceLabel());
 
   // Edges (animated flow).
@@ -383,8 +401,11 @@ function render(): void {
         .on('drag', (ev, d) => {
           d.x = ev.x;
           d.y = ev.y;
-          refreshPositions();
+          // Dragging an inside cell reshapes the boundary, which in turn
+          // repositions the external peers — recompute that first, then
+          // flush all transforms in one pass.
           if (isInside(d)) redrawBoundary();
+          refreshPositions();
         }) as never,
     );
   nodeSel
@@ -401,7 +422,7 @@ function render(): void {
     .attr('text-anchor', 'middle')
     .attr('fill', 'var(--sw-fg-1, #d4d6dd)')
     .style('font-family', 'var(--sw-mono, monospace)')
-    .style('font-size', '10px')
+    .style('font-size', '13px')
     .text((d) => {
       const base = d.name.split('.')[0];
       return base.length > 14 ? `${base.slice(0, 14)}…` : base;

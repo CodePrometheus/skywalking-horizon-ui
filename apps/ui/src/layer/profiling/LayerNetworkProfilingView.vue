@@ -396,28 +396,30 @@ function fmtTime(ms: number): string {
       <div class="dlg-body edge-dlg-body">
         <div v-if="relationLoading" class="muted">Reading process-relation metrics…</div>
         <div v-else-if="relationError" class="banner err">{{ relationError }}</div>
-        <template v-else-if="relationMetrics">
+        <!-- Left/right split: client side | server side. Each column
+             stacks its metric widgets; matching ids line up row-for-row.
+             The metric set is operator-configurable in the admin. -->
+        <div v-else-if="relationMetrics" class="edge-cols">
           <section
             v-for="side in (['client', 'server'] as const)"
             :key="side"
-            class="edge-side"
+            class="edge-col"
           >
-            <h5 class="edge-side-head">{{ side }} side</h5>
-            <div class="edge-grid">
-              <div v-for="m in relationMetrics[side]" :key="m.id" class="edge-widget sw-card">
-                <div class="ew-head">
-                  <span class="ew-label">{{ m.label }}</span>
-                  <span class="ew-val mono">{{ fmtMetric(latestValue(m.values), m.unit) }}</span>
-                </div>
-                <TimeChart
-                  :series="[{ label: m.label, data: m.values, unit: m.unit }]"
-                  :height="120"
-                  :unit="m.unit"
-                />
+            <h5 class="edge-col-head" :class="side">{{ side === 'client' ? 'Client side' : 'Server side' }}</h5>
+            <div v-if="!relationMetrics[side].length" class="muted sm">No {{ side }} metrics configured.</div>
+            <div v-for="m in relationMetrics[side]" :key="m.id" class="edge-widget sw-card">
+              <div class="ew-head">
+                <span class="ew-label">{{ m.label }}</span>
+                <span class="ew-val mono">{{ fmtMetric(latestValue(m.values), m.unit) }}</span>
               </div>
+              <TimeChart
+                :series="[{ label: m.label, data: m.values, unit: m.unit }]"
+                :height="130"
+                :unit="m.unit"
+              />
             </div>
           </section>
-        </template>
+        </div>
       </div>
     </div>
   </div>
@@ -744,8 +746,8 @@ function fmtTime(ms: number): string {
   font-size: 10.5px;
   color: var(--sw-fg-1);
 }
-/* Edge dashboard modal — full process-relation widget grid. */
-.edge-dlg { width: 980px; max-width: 94vw; max-height: 88vh; }
+/* Edge dashboard modal — wide, client | server side-by-side. */
+.edge-dlg { width: 1320px; max-width: 96vw; max-height: 90vh; }
 .edge-dlg-title {
   display: flex;
   align-items: center;
@@ -764,20 +766,24 @@ function fmtTime(ms: number): string {
   padding: 1px 8px;
 }
 .edge-dlg-body { overflow-y: auto; padding: 12px 14px; }
-.edge-side { margin-bottom: 14px; }
-.edge-side-head {
-  margin: 0 0 8px;
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--sw-fg-3);
-}
-.edge-grid {
+.edge-cols {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
 }
+.edge-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.edge-col-head {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--sw-line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.edge-col-head.client { color: var(--sw-accent); border-bottom-color: var(--sw-accent); }
+.edge-col-head.server { color: var(--sw-info, #5a9cf8); border-bottom-color: var(--sw-info, #5a9cf8); }
 .edge-widget { padding: 8px 10px; }
 .ew-head {
   display: flex;
@@ -785,9 +791,9 @@ function fmtTime(ms: number): string {
   justify-content: space-between;
   margin-bottom: 4px;
 }
-.ew-label { font-size: 11px; color: var(--sw-fg-2); }
+.ew-label { font-size: 11.5px; color: var(--sw-fg-1); font-weight: 600; }
 .ew-val {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--sw-fg-0);
   font-family: var(--sw-mono);
   font-variant-numeric: tabular-nums;

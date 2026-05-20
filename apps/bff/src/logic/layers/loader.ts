@@ -320,21 +320,29 @@ export const BOOSTER_ENDPOINT_DEP_DEFAULTS: EndpointDependencyConfig = {
  * `*_total_bytes` are cumulative counters summed over the window.
  */
 export const BOOSTER_PROCESS_TOPOLOGY_DEFAULTS: ProcessTopologyConfig = {
+  // Default ProcessRelation TCP metric set — fully operator-editable via
+  // the admin network-profiling config. ids pair across client/server so
+  // the edge dashboard renders matching rows side-by-side; bytes are
+  // /1024 → KB and exe times /1000000 → ms for readable units.
   edgeClientMetrics: [
-    { id: 'write_cpm', label: 'Write CPM', mqe: 'process_relation_client_write_cpm', unit: 'cpm', aggregation: 'avg' },
-    { id: 'read_cpm', label: 'Read CPM', mqe: 'process_relation_client_read_cpm', unit: 'cpm', aggregation: 'avg' },
-    { id: 'write_bytes', label: 'Write bytes', mqe: 'process_relation_client_write_total_bytes', unit: 'B', aggregation: 'sum' },
-    { id: 'read_bytes', label: 'Read bytes', mqe: 'process_relation_client_read_total_bytes', unit: 'B', aggregation: 'sum' },
-    { id: 'connect_cpm', label: 'Connect CPM', mqe: 'process_relation_client_connect_cpm', unit: 'cpm', aggregation: 'avg' },
-    { id: 'close_cpm', label: 'Close CPM', mqe: 'process_relation_client_close_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'write_cpm', label: 'Write OP / min', mqe: 'process_relation_client_write_cpm', aggregation: 'avg' },
+    { id: 'read_cpm', label: 'Read OP / min', mqe: 'process_relation_client_read_cpm', aggregation: 'avg' },
+    { id: 'write_kb', label: 'Write package size', mqe: 'process_relation_client_write_total_bytes/1024', unit: 'KB', aggregation: 'avg' },
+    { id: 'read_kb', label: 'Read package size', mqe: 'process_relation_client_read_total_bytes/1024', unit: 'KB', aggregation: 'avg' },
+    { id: 'write_avg_ms', label: 'Write OP avg time', mqe: 'process_relation_client_write_avg_exe_time/1000000', unit: 'ms', aggregation: 'avg' },
+    { id: 'read_avg_ms', label: 'Read OP avg time', mqe: 'process_relation_client_read_avg_exe_time/1000000', unit: 'ms', aggregation: 'avg' },
+    { id: 'connect_cpm', label: 'Connect OP / min', mqe: 'process_relation_client_connect_cpm', aggregation: 'avg' },
+    { id: 'close_cpm', label: 'Close OP / min', mqe: 'process_relation_client_close_cpm', aggregation: 'avg' },
   ],
   edgeServerMetrics: [
-    { id: 'write_cpm', label: 'Write CPM', mqe: 'process_relation_server_write_cpm', unit: 'cpm', aggregation: 'avg' },
-    { id: 'read_cpm', label: 'Read CPM', mqe: 'process_relation_server_read_cpm', unit: 'cpm', aggregation: 'avg' },
-    { id: 'write_bytes', label: 'Write bytes', mqe: 'process_relation_server_write_total_bytes', unit: 'B', aggregation: 'sum' },
-    { id: 'read_bytes', label: 'Read bytes', mqe: 'process_relation_server_read_total_bytes', unit: 'B', aggregation: 'sum' },
-    { id: 'connect_cpm', label: 'Connect CPM', mqe: 'process_relation_server_connect_cpm', unit: 'cpm', aggregation: 'avg' },
-    { id: 'close_cpm', label: 'Close CPM', mqe: 'process_relation_server_close_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'write_cpm', label: 'Write OP / min', mqe: 'process_relation_server_write_cpm', aggregation: 'avg' },
+    { id: 'read_cpm', label: 'Read OP / min', mqe: 'process_relation_server_read_cpm', aggregation: 'avg' },
+    { id: 'write_kb', label: 'Write package size', mqe: 'process_relation_server_write_total_bytes/1024', unit: 'KB', aggregation: 'avg' },
+    { id: 'read_kb', label: 'Read package size', mqe: 'process_relation_server_read_total_bytes/1024', unit: 'KB', aggregation: 'avg' },
+    { id: 'write_avg_ms', label: 'Write OP avg time', mqe: 'process_relation_server_write_avg_exe_time/1000000', unit: 'ms', aggregation: 'avg' },
+    { id: 'read_avg_ms', label: 'Read OP avg time', mqe: 'process_relation_server_read_avg_exe_time/1000000', unit: 'ms', aggregation: 'avg' },
+    { id: 'connect_cpm', label: 'Connect OP / min', mqe: 'process_relation_server_connect_cpm', aggregation: 'avg' },
+    { id: 'close_cpm', label: 'Close OP / min', mqe: 'process_relation_server_close_cpm', aggregation: 'avg' },
   ],
 };
 

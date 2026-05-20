@@ -379,18 +379,39 @@ function toggleNewTaskLabel(l: string): void {
     <div class="ebpf-side">
       <div class="side-head">
         <span>eBPF profile tasks</span>
-        <button
-          class="btn-new"
-          :disabled="!selectedId || !couldProfiling"
-          :title="
-            !selectedId
-              ? 'Pick a service'
-              : couldProfiling
-                ? 'Create a new eBPF task'
-                : 'OAP reports no profilable processes for this service'
-          "
-          @click="showNewTask = true"
-        >+ New Task</button>
+        <div class="side-head-actions">
+          <button
+            class="btn-icon"
+            :disabled="!selectedId || tasksLoading"
+            :title="
+              !selectedId
+                ? 'Pick a service'
+                : tasksLoading
+                  ? 'Refreshing…'
+                  : 'Refresh task list'
+            "
+            aria-label="Refresh task list"
+            @click="refreshTasks"
+          >
+            <!-- Inline ↻ glyph — avoids pulling an extra icon and stays
+                 readable at 10.5px. The CSS spin keyframe runs while
+                 `tasksLoading` is true so the operator sees the refetch
+                 in-flight. -->
+            <span class="ic" :class="{ spin: tasksLoading }">↻</span>
+          </button>
+          <button
+            class="btn-new"
+            :disabled="!selectedId || !couldProfiling"
+            :title="
+              !selectedId
+                ? 'Pick a service'
+                : couldProfiling
+                  ? 'Create a new eBPF task'
+                  : 'OAP reports no profilable processes for this service'
+            "
+            @click="showNewTask = true"
+          >+ New Task</button>
+        </div>
       </div>
       <div v-if="tasksError" class="side-err">{{ tasksError }}</div>
       <div v-else-if="tasksLoading && !tasks.length" class="side-empty">Loading…</div>
@@ -636,6 +657,11 @@ function toggleNewTaskLabel(l: string): void {
   font-size: 11.5px;
   color: var(--sw-fg-1);
 }
+.side-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .btn-new {
   font-size: 10.5px;
   padding: 2px 8px;
@@ -652,6 +678,38 @@ function toggleNewTaskLabel(l: string): void {
 .btn-new:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.btn-icon {
+  font-size: 11.5px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border: 1px solid var(--sw-line-2);
+  background: var(--sw-bg-1);
+  color: var(--sw-fg-1);
+  cursor: pointer;
+}
+.btn-icon:hover:not(:disabled) {
+  border-color: var(--sw-accent);
+  color: var(--sw-accent);
+}
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-icon .ic {
+  display: inline-block;
+  transform-origin: 50% 50%;
+}
+.btn-icon .ic.spin {
+  animation: ebpf-refresh-spin 0.9s linear infinite;
+}
+@keyframes ebpf-refresh-spin {
+  to { transform: rotate(360deg); }
 }
 .side-err,
 .side-empty {

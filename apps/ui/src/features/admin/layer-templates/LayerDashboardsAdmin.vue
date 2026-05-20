@@ -34,9 +34,17 @@ import type {
   DashboardScope,
   DashboardWidget,
   EndpointDependencyConfig,
+  ProcessTopologyConfig,
   TopologyConfig,
   TopologyMetricDef,
 } from '@skywalking-horizon-ui/api-client';
+
+/** Admin-only scope. `networkProfiling` isn't a dashboard-widget scope
+ *  (the network-profiling page is the process topology + edge panel, not
+ *  a widget grid), so it lives outside `DashboardScope` — but the admin's
+ *  scope-tab strip surfaces it as an editable config tab for the
+ *  ProcessRelation MQE. */
+type AdminScope = DashboardScope | 'networkProfiling';
 import { bff, bffClient } from '@/api/client';
 import TimeChart from '@/components/charts/TimeChart.vue';
 import TopList from '@/components/charts/TopList.vue';
@@ -51,7 +59,7 @@ import { useTemplateSync } from '@/features/admin/_shared/useTemplateSync';
 // Save gating + per-row badge below.
 const sync = useTemplateSync({ kind: 'layer' });
 
-const SCOPES: DashboardScope[] = [
+const SCOPES: AdminScope[] = [
   'service',
   'instance',
   'endpoint',
@@ -64,11 +72,12 @@ const SCOPES: DashboardScope[] = [
   'traceProfiling',
   'ebpfProfiling',
   'asyncProfiling',
+  'networkProfiling',
 ];
 /** Display label for each scope — kebab-cases the profiling scopes
  *  so the scope tab strip reads as "trace profiling" instead of the
  *  camelCase key. */
-const SCOPE_LABELS: Record<DashboardScope, string> = {
+const SCOPE_LABELS: Record<AdminScope, string> = {
   service: 'service',
   instance: 'instance',
   endpoint: 'endpoint',
@@ -79,13 +88,14 @@ const SCOPE_LABELS: Record<DashboardScope, string> = {
   traceProfiling: 'trace profiling',
   ebpfProfiling: 'eBPF profiling',
   asyncProfiling: 'async profiling',
+  networkProfiling: 'network profiling',
 };
 
 const templates = ref<AdminLayerTemplate[]>([]);
 const isLoading = ref(true);
 const error = ref<string | null>(null);
 const selectedKey = ref<string>('');
-const activeScope = ref<DashboardScope>('service');
+const activeScope = ref<AdminScope>('service');
 const isSaving = ref(false);
 const saveMsg = ref<string | null>(null);
 /** When false the layers rail collapses to a thin dot-strip so the
@@ -114,8 +124,8 @@ async function loadAll(): Promise<void> {
       selectedKey.value = res.templates[0].key;
     }
     const queryScope = String(route.query.scope ?? '');
-    if (SCOPES.includes(queryScope as DashboardScope)) {
-      activeScope.value = queryScope as DashboardScope;
+    if (SCOPES.includes(queryScope as AdminScope)) {
+      activeScope.value = queryScope as AdminScope;
     }
     syncDraft();
   } catch (err) {
@@ -162,7 +172,7 @@ onMounted(loadAll);
  * Used to filter the scope tab strip so admin only surfaces tabs for
  * components the operator has toggled on.
  */
-const SCOPE_COMPONENT: Record<DashboardScope, ComponentKey> = {
+const SCOPE_COMPONENT: Record<AdminScope, ComponentKey> = {
   service: 'service',
   instance: 'instances',
   endpoint: 'endpoints',
@@ -176,8 +186,9 @@ const SCOPE_COMPONENT: Record<DashboardScope, ComponentKey> = {
   traceProfiling: 'traceProfiling' as ComponentKey,
   ebpfProfiling: 'ebpfProfiling' as ComponentKey,
   asyncProfiling: 'asyncProfiling' as ComponentKey,
+  networkProfiling: 'networkProfiling' as ComponentKey,
 };
-const visibleScopes = computed<DashboardScope[]>(() => {
+const visibleScopes = computed<AdminScope[]>(() => {
   const tpl = draft.template;
   if (!tpl?.components) return SCOPES;
   return SCOPES.filter((s) => tpl.components[SCOPE_COMPONENT[s]]);
@@ -196,7 +207,7 @@ const dirty = computed(() => {
   return JSON.stringify(original) !== JSON.stringify(draft.template);
 });
 
-function widgetsFor(scope: DashboardScope): DashboardWidget[] {
+function widgetsFor(scope: AdminScope): DashboardWidget[] {
   const tpl = draft.template;
   if (!tpl) return [];
   // Read from `dashboards.<scope>`, falling back to legacy `widgets`
@@ -208,7 +219,7 @@ function widgetsFor(scope: DashboardScope): DashboardWidget[] {
   return [];
 }
 
-function setWidgetsFor(scope: DashboardScope, widgets: DashboardWidget[]): void {
+function setWidgetsFor(scope: AdminScope, widgets: DashboardWidget[]): void {
   const tpl = draft.template;
   if (!tpl) return;
   const dashboards =
@@ -535,6 +546,9 @@ function emptyTopology(): TopologyConfig {
 function emptyEndpointDep(): EndpointDependencyConfig {
   return { nodeMetrics: [], linkMetrics: [] };
 }
+function emptyProcessTopology(): ProcessTopologyConfig {
+  return { edgeClientMetrics: [], edgeServerMetrics: [] };
+}
 
 function ensureTopology(): TopologyConfig {
   if (!draft.template) throw new Error('no template selected');
@@ -551,8 +565,16 @@ function ensureEndpointDep(): EndpointDependencyConfig {
   if (!tpl.endpointDependency.linkMetrics) tpl.endpointDependency.linkMetrics = [];
   return tpl.endpointDependency;
 }
+function ensureProcessTopology(): ProcessTopologyConfig {
+  if (!draft.template) throw new Error('no template selected');
+  const tpl = draft.template;
+  if (!tpl.processTopology) tpl.processTopology = emptyProcessTopology();
+  if (!tpl.processTopology.edgeClientMetrics) tpl.processTopology.edgeClientMetrics = [];
+  if (!tpl.processTopology.edgeServerMetrics) tpl.processTopology.edgeServerMetrics = [];
+  return tpl.processTopology;
+}
 
-type MetricBucket = 'node' | 'linkServer' | 'linkClient' | 'link';
+type MetricBucket = 'node' | 'linkServer' | 'linkClient' | 'link' | 'edgeClient' | 'edgeServer';
 
 function getMetricList(bucket: MetricBucket): TopologyMetricDef[] {
   if (!draft.template) return [];
@@ -565,6 +587,10 @@ function getMetricList(bucket: MetricBucket): TopologyMetricDef[] {
     const t = ensureEndpointDep();
     if (bucket === 'node') return t.nodeMetrics;
     if (bucket === 'link') return t.linkMetrics ?? [];
+  } else if (activeScope.value === 'networkProfiling') {
+    const t = ensureProcessTopology();
+    if (bucket === 'edgeClient') return t.edgeClientMetrics;
+    if (bucket === 'edgeServer') return t.edgeServerMetrics;
   }
   return [];
 }
@@ -604,11 +630,37 @@ const topologyServerMetrics = computed(() => getMetricList('linkServer'));
 const topologyClientMetrics = computed(() => getMetricList('linkClient'));
 const epDepNodeMetrics = computed(() => activeScope.value === 'dependency' ? getMetricList('node') : []);
 const epDepLinkMetrics = computed(() => getMetricList('link'));
+const processEdgeClientMetrics = computed(() =>
+  activeScope.value === 'networkProfiling' ? getMetricList('edgeClient') : [],
+);
+const processEdgeServerMetrics = computed(() =>
+  activeScope.value === 'networkProfiling' ? getMetricList('edgeServer') : [],
+);
 
-/* Trace + Logs tabs have no per-layer config — only the
- * enable/disable toggle in the Components block. The old
- * `traces.source` field is gone; legacy JSONs with a `traces` block
- * are ignored by the SPA. */
+/* Trace backend selector. `traces.source` decides which trace store the
+ * per-layer Trace tab dispatches to: `native` (SkyWalking query-protocol),
+ * `zipkin` (Envoy ALS / rover spans), or `both` (parallel tables). The
+ * field IS live — `LayerTracesEntry` reads `layer.traces.source` at
+ * runtime — so it belongs in the config UI. Default `both` when unset. */
+type TraceSource = 'native' | 'zipkin' | 'both';
+const traceSource = computed<TraceSource>({
+  get: () => draft.template?.traces?.source ?? 'both',
+  set: (v: TraceSource) => {
+    if (!draft.template) return;
+    if (draft.template.traces) draft.template.traces.source = v;
+    else draft.template.traces = { source: v };
+  },
+});
+const TRACE_SOURCE_OPTIONS: Array<{ value: TraceSource; label: string; hint: string }> = [
+  { value: 'native', label: 'Native', hint: 'SkyWalking query-protocol traces (agent-instrumented).' },
+  { value: 'zipkin', label: 'Zipkin', hint: 'Traces emitted from the Zipkin & OpenTelemetry ecosystem.' },
+  { value: 'both', label: 'Both', hint: 'Layer carries both native and Zipkin traces — their span formats and query conditions differ, so each gets its own trace tab.' },
+];
+
+/* Logs has no per-layer config beyond the enable/disable Components
+ * toggle. Trace carries one setting — `traces.source` (native / zipkin /
+ * both), edited via `traceSource` above — which the per-layer Trace tab
+ * honors at runtime to pick the trace backend. */
 
 /**
  * Metrics block editor — drives the service-list columns + default
@@ -1519,6 +1571,77 @@ const namingTest = computed<NamingTestResult>(() => {
           </div>
         </section>
 
+        <section
+          v-else-if="activeScope === 'networkProfiling'"
+          class="sw-card editor-card topo-cfg-card"
+        >
+          <div class="card-head">
+            <h4>Network profiling — process-relation config</h4>
+            <span class="sub">edge MQE for the process-topology detail panel. Queried under ProcessRelation when an operator clicks a process→process call.</span>
+          </div>
+          <div class="topo-cfg-body">
+            <div class="topo-cfg-section">
+              <header class="topo-cfg-head">
+                <h5>Client-side metrics</h5>
+                <span class="sub">edge metrics queried as <code>process_relation_client_*</code></span>
+                <button class="sw-btn add" type="button" @click="addMetric('edgeClient')">＋ Add</button>
+              </header>
+              <div v-if="processEdgeClientMetrics.length === 0" class="topo-cfg-empty">No client-side metrics.</div>
+              <div v-else class="metric-list">
+                <article v-for="(m, i) in processEdgeClientMetrics" :key="i" class="metric-row">
+                  <div class="metric-row-head">
+                    <label class="mf"><span>id</span><input v-model="m.id" type="text" class="mf-input mono" /></label>
+                    <label class="mf"><span>label</span><input v-model="m.label" type="text" class="mf-input" /></label>
+                    <label class="mf mf-wide"><span>MQE</span><input v-model="m.mqe" type="text" class="mf-input mono" placeholder="process_relation_client_write_cpm" /></label>
+                    <label class="mf mf-narrow"><span>unit</span><input v-model="m.unit" type="text" class="mf-input" /></label>
+                    <label class="mf mf-narrow"><span>agg</span>
+                      <select v-model="m.aggregation" class="mf-input">
+                        <option value="avg">avg</option>
+                        <option value="sum">sum</option>
+                      </select>
+                    </label>
+                    <div class="metric-row-actions">
+                      <button class="sw-btn small ghost" type="button" :disabled="i === 0" @click="moveMetric('edgeClient', i, -1)">↑</button>
+                      <button class="sw-btn small ghost" type="button" :disabled="i === processEdgeClientMetrics.length - 1" @click="moveMetric('edgeClient', i, 1)">↓</button>
+                      <button class="sw-btn small ghost danger" type="button" @click="removeMetric('edgeClient', i)">×</button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="topo-cfg-section">
+              <header class="topo-cfg-head">
+                <h5>Server-side metrics</h5>
+                <span class="sub">edge metrics queried as <code>process_relation_server_*</code></span>
+                <button class="sw-btn add" type="button" @click="addMetric('edgeServer')">＋ Add</button>
+              </header>
+              <div v-if="processEdgeServerMetrics.length === 0" class="topo-cfg-empty">No server-side metrics.</div>
+              <div v-else class="metric-list">
+                <article v-for="(m, i) in processEdgeServerMetrics" :key="i" class="metric-row">
+                  <div class="metric-row-head">
+                    <label class="mf"><span>id</span><input v-model="m.id" type="text" class="mf-input mono" /></label>
+                    <label class="mf"><span>label</span><input v-model="m.label" type="text" class="mf-input" /></label>
+                    <label class="mf mf-wide"><span>MQE</span><input v-model="m.mqe" type="text" class="mf-input mono" placeholder="process_relation_server_write_cpm" /></label>
+                    <label class="mf mf-narrow"><span>unit</span><input v-model="m.unit" type="text" class="mf-input" /></label>
+                    <label class="mf mf-narrow"><span>agg</span>
+                      <select v-model="m.aggregation" class="mf-input">
+                        <option value="avg">avg</option>
+                        <option value="sum">sum</option>
+                      </select>
+                    </label>
+                    <div class="metric-row-actions">
+                      <button class="sw-btn small ghost" type="button" :disabled="i === 0" @click="moveMetric('edgeServer', i, -1)">↑</button>
+                      <button class="sw-btn small ghost" type="button" :disabled="i === processEdgeServerMetrics.length - 1" @click="moveMetric('edgeServer', i, 1)">↓</button>
+                      <button class="sw-btn small ghost danger" type="button" @click="removeMetric('edgeServer', i)">×</button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Trace + Logs are built-in views with no per-layer config
              other than enable/disable, which is already handled via
              the Components toggle in the right sidebar. -->
@@ -1528,10 +1651,35 @@ const namingTest = computed<NamingTestResult>(() => {
         >
           <div class="card-head">
             <h4>{{ SCOPE_LABELS[activeScope] }} tab</h4>
-            <span class="sub">No per-layer config required — toggle visibility via Components in the right sidebar.</span>
+            <span class="sub">
+              {{ activeScope === 'trace'
+                ? 'Pick the trace backend this layer reads from.'
+                : 'No per-layer config required — toggle visibility via Components in the right sidebar.' }}
+            </span>
           </div>
           <div class="topo-cfg-body">
-            <p class="topo-cfg-help">
+            <div v-if="activeScope === 'trace'" class="trace-source-cfg">
+              <div class="trace-source-head">Trace source</div>
+              <div class="trace-source-opts">
+                <label
+                  v-for="o in TRACE_SOURCE_OPTIONS"
+                  :key="o.value"
+                  class="trace-source-opt"
+                  :class="{ on: traceSource === o.value }"
+                >
+                  <input
+                    type="radio"
+                    name="trace-source"
+                    :value="o.value"
+                    :checked="traceSource === o.value"
+                    @change="traceSource = o.value"
+                  />
+                  <span class="ts-label">{{ o.label }}</span>
+                  <span class="ts-hint">{{ o.hint }}</span>
+                </label>
+              </div>
+            </div>
+            <p v-else class="topo-cfg-help">
               The <b>{{ SCOPE_LABELS[activeScope] }}</b> tab is a built-in view that uses
               SkyWalking-native query-protocol APIs directly. Operators configure filters
               and time range at runtime from the page itself; nothing to wire up here.
@@ -2380,6 +2528,30 @@ const namingTest = computed<NamingTestResult>(() => {
   color: var(--sw-fg-3);
   line-height: 1.5;
 }
+.trace-source-cfg { display: flex; flex-direction: column; gap: 8px; }
+.trace-source-head {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sw-fg-3);
+}
+.trace-source-opts { display: flex; flex-direction: column; gap: 6px; }
+.trace-source-opt {
+  display: grid;
+  grid-template-columns: 16px 64px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--sw-line);
+  border-radius: 4px;
+  background: var(--sw-bg-1);
+  cursor: pointer;
+  font-size: 11.5px;
+}
+.trace-source-opt.on { border-color: var(--sw-accent); background: var(--sw-bg-2); }
+.trace-source-opt .ts-label { font-weight: 600; color: var(--sw-fg-0); }
+.trace-source-opt .ts-hint { color: var(--sw-fg-3); }
 .topo-cfg-help code {
   font-family: var(--sw-mono);
   color: var(--sw-fg-1);

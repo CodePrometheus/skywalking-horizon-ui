@@ -105,6 +105,49 @@ export interface TopologyConfig {
   showGroup?: boolean;
 }
 
+/** Operator-editable process-topology (network-profiling) dashboard
+ *  config. Lives in the layer JSON's `processTopology` block. Drives the
+ *  network-profiling page's edge detail panel: clicking a process→process
+ *  call evaluates these MQE expressions under the ProcessRelation scope.
+ *  OAP exposes a client family and a server family (the conversation is
+ *  observed from both sides of the eBPF probe), so both lists exist —
+ *  mirrors `process_relation_client_*` / `process_relation_server_*`. */
+export interface ProcessTopologyConfig {
+  /** Per-edge MQE under ProcessRelation, client side
+   *  (`process_relation_client_*`). */
+  edgeClientMetrics: TopologyMetricDef[];
+  /** Per-edge MQE under ProcessRelation, server side
+   *  (`process_relation_server_*`). */
+  edgeServerMetrics: TopologyMetricDef[];
+}
+
+/** One resolved process-relation metric series for the edge panel. */
+export interface ProcessRelationMetric {
+  id: string;
+  label: string;
+  unit?: string;
+  /** Per-bucket values over the duration window (MINUTE step). */
+  values: Array<number | null>;
+}
+
+/** Response of `POST /api/ebpf/network/process-relation-metrics`. */
+export interface ProcessRelationMetricsResponse {
+  client: ProcessRelationMetric[];
+  server: ProcessRelationMetric[];
+  reachable: boolean;
+  error?: string;
+}
+
+/** Source / dest descriptor the edge panel sends to resolve relation
+ *  metrics. All names (not ids) — the ProcessRelation MQE entity keys on
+ *  service / instance / process NAMES. */
+export interface ProcessRelationEndpointRef {
+  serviceName: string;
+  serviceInstanceName: string;
+  processName: string;
+  normal?: boolean;
+}
+
 /** Operator-editable endpoint-dependency dashboard config. Lives in the
  *  layer JSON's `endpointDependency` block. */
 export interface EndpointDependencyConfig {

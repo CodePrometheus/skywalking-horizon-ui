@@ -134,6 +134,7 @@ export const ROUTE_POLICY: Record<string, RoutePolicy> = {
   'GET /api/ebpf/network/tasks':                   'profile:read',
   'POST /api/ebpf/network/tasks':                  'profile:enable',
   'GET /api/ebpf/network/topology':                'profile:read',
+  'POST /api/layer/:key/ebpf/network/process-relation-metrics': 'profile:read',
   'POST /api/ebpf/network/tasks/:taskId/keep-alive': 'profile:enable',
 
   // ── Config — alarm-page setup, layer setup, overview, dashboards ─

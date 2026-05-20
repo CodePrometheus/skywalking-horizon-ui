@@ -42,12 +42,17 @@ import type {
   NetworkProfilingCreateRequest,
   NetworkProfilingCreateResponse,
   NetworkProfilingKeepAliveResponse,
+  ProcessRelationEndpointRef,
+  ProcessRelationMetric,
+  ProcessRelationMetricsResponse,
   ProcessTopologyResponse,
+  TopologyMetricDef,
 } from '@skywalking-horizon-ui/api-client';
 import type { ConfigSource } from '../../config/loader.js';
 import type { SessionStore } from '../../user/sessions.js';
 import { requireAuth } from '../../user/middleware.js';
 import { graphqlPost, buildOapOpts } from '../../client/graphql.js';
+import { getLayerTemplate, processTopologyConfigFor } from '../../logic/layers/loader.js';
 
 export interface EBPFRouteDeps {
   config: ConfigSource;
@@ -225,6 +230,54 @@ async function resolveServiceId(
     data.services.find((s) => s.id === serviceArg)?.id ??
     null
   );
+}
+
+// ── Process-relation metrics (network-profiling edge panel) ──────────
+
+interface MqeEnv {
+  error?: string | null;
+  results?: Array<{ values?: Array<{ value: string | number | null }> }>;
+}
+
+/**
+ * One `execExpression` fragment for a ProcessRelation metric. Like the
+ * service-map relationFragment we deliberately omit `scope` — OAP infers
+ * ProcessRelation + side from the metric name (`process_relation_client_*`
+ * / `process_relation_server_*`). Names (not ids) key the entity: the
+ * source/dest process is identified by service + instance + process name.
+ */
+function processRelationFragment(
+  alias: string,
+  expr: string,
+  src: ProcessRelationEndpointRef,
+  dst: ProcessRelationEndpointRef,
+  w: { start: string; end: string },
+): string {
+  return (
+    `${alias}: execExpression(\n` +
+    `      expression: ${JSON.stringify(expr)},\n` +
+    `      entity: {` +
+    ` serviceName: ${JSON.stringify(src.serviceName)},` +
+    ` normal: ${src.normal === false ? 'false' : 'true'},` +
+    ` serviceInstanceName: ${JSON.stringify(src.serviceInstanceName)},` +
+    ` processName: ${JSON.stringify(src.processName)},` +
+    ` destServiceName: ${JSON.stringify(dst.serviceName)},` +
+    ` destNormal: ${dst.normal === false ? 'false' : 'true'},` +
+    ` destServiceInstanceName: ${JSON.stringify(dst.serviceInstanceName)},` +
+    ` destProcessName: ${JSON.stringify(dst.processName)} },\n` +
+    `      duration: { start: ${JSON.stringify(w.start)}, end: ${JSON.stringify(w.end)}, step: MINUTE }\n` +
+    `    ) { error results { values { value } } }`
+  );
+}
+
+function relationSeries(env: MqeEnv | undefined): Array<number | null> {
+  if (!env || env.error) return [];
+  const values = env.results?.[0]?.values ?? [];
+  return values.map((v) => {
+    if (v.value === null || v.value === undefined) return null;
+    const n = Number(v.value);
+    return Number.isFinite(n) ? n : null;
+  });
 }
 
 export function registerEBPFRoutes(app: FastifyInstance, deps: EBPFRouteDeps): void {
@@ -468,6 +521,79 @@ export function registerEBPFRoutes(app: FastifyInstance, deps: EBPFRouteDeps): v
         });
         payload.tip = data.analysisEBPFResult?.tip ?? null;
         payload.trees = data.analysisEBPFResult?.trees ?? [];
+        return reply.send(payload);
+      } catch (err) {
+        return reply.send(softErr(payload, err));
+      }
+    },
+  );
+
+  /** Process-relation metrics for a clicked edge in the network-
+   *  profiling process topology. Resolves the layer's processTopology
+   *  MQE config (operator override or bundled default), evaluates every
+   *  client + server metric under the ProcessRelation scope for the
+   *  source→dest process pair, and returns the per-bucket series for the
+   *  edge detail panel. */
+  app.post(
+    '/api/layer/:key/ebpf/network/process-relation-metrics',
+    { preHandler: auth },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const params = req.params as { key: string };
+      const body = req.body as
+        | {
+            source?: ProcessRelationEndpointRef;
+            dest?: ProcessRelationEndpointRef;
+            windowMinutes?: number;
+          }
+        | undefined;
+      const payload: ProcessRelationMetricsResponse = { client: [], server: [], reachable: true };
+      const src = body?.source;
+      const dst = body?.dest;
+      if (!src?.processName || !dst?.processName) {
+        payload.error = 'missing source/dest process';
+        return reply.send(payload);
+      }
+
+      const cfg = processTopologyConfigFor(getLayerTemplate(params.key));
+      const minutes = Math.max(5, Math.min(180, Number(body?.windowMinutes) || 30));
+      const end = new Date();
+      const start = new Date(end.getTime() - minutes * 60_000);
+      // Match the network-topology route's UTC formatting so the edge
+      // metrics window lines up with the rendered graph window.
+      const fmt = (d: Date) => {
+        const z = (n: number) => String(n).padStart(2, '0');
+        return `${d.getUTCFullYear()}-${z(d.getUTCMonth() + 1)}-${z(d.getUTCDate())} ${z(d.getUTCHours())}${z(d.getUTCMinutes())}`;
+      };
+      const w = { start: fmt(start), end: fmt(end) };
+
+      // Build one aliased execExpression per metric across both sides.
+      const aliasMap = new Map<string, { side: 'client' | 'server'; metric: TopologyMetricDef }>();
+      const fragments: string[] = [];
+      const push = (side: 'client' | 'server', list: TopologyMetricDef[]) => {
+        list.forEach((m, i) => {
+          const alias = `${side}_${i}`;
+          aliasMap.set(alias, { side, metric: m });
+          fragments.push(processRelationFragment(alias, m.mqe, src, dst, w));
+        });
+      };
+      push('client', cfg.edgeClientMetrics);
+      push('server', cfg.edgeServerMetrics);
+      if (fragments.length === 0) return reply.send(payload);
+
+      const query = `query HorizonProcessRelationMetrics {\n  ${fragments.join('\n  ')}\n}`;
+      const opts = buildOapOpts(deps.config.current, deps.fetch);
+      try {
+        const raw = await graphqlPost<Record<string, MqeEnv>>(opts, query);
+        for (const [alias, { side, metric }] of aliasMap) {
+          const out: ProcessRelationMetric = {
+            id: metric.id,
+            label: metric.label,
+            unit: metric.unit,
+            values: relationSeries(raw[alias]),
+          };
+          if (side === 'client') payload.client.push(out);
+          else payload.server.push(out);
+        }
         return reply.send(payload);
       } catch (err) {
         return reply.send(softErr(payload, err));

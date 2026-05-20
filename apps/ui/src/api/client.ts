@@ -39,6 +39,7 @@ import type {
   EndpointDependencyConfig,
   LocalState,
   MetricRow,
+  ProcessTopologyConfig,
   RuleStatus,
   TopologyConfig,
   TracesConfig,
@@ -175,6 +176,9 @@ export type {
   ProcessNode,
   ProcessCall,
   ProcessTopologyResponse,
+  ProcessRelationEndpointRef,
+  ProcessRelationMetric,
+  ProcessRelationMetricsResponse,
   NetworkProfilingSampling,
   NetworkProfilingCreateRequest,
   NetworkProfilingCreateResponse,
@@ -272,6 +276,7 @@ export interface AdminLayerTemplate {
   widgets: DashboardWidget[];
   topology?: TopologyConfig;
   endpointDependency?: EndpointDependencyConfig;
+  processTopology?: ProcessTopologyConfig;
   traces?: TracesConfig;
   naming?: {
     pattern: string;

@@ -157,11 +157,22 @@ function render(): void {
     .on('click', (_ev, d) => {
       selectedCallId.value = d.id;
       selectedNodeId.value = null;
+      restyleEdges();
       emit(
         'select-call',
         props.calls.find((c) => c.id === d.id) ?? null,
       );
     });
+
+  // Highlight the selected edge (accent + thicker) so the operator sees
+  // which conversation the detail panel is bound to.
+  function restyleEdges(): void {
+    edge
+      .attr('stroke', (d) =>
+        d.id === selectedCallId.value ? 'var(--sw-accent, #f97316)' : 'var(--sw-line-2, #3a3d47)',
+      )
+      .attr('stroke-width', (d) => (d.id === selectedCallId.value ? 2.4 : 1.4));
+  }
   // Detect-point pills
   const pills = linkG
     .selectAll('g.pill')
@@ -199,6 +210,7 @@ function render(): void {
     .on('click', (_ev, d) => {
       selectedNodeId.value = d.id;
       selectedCallId.value = null;
+      restyleEdges();
       emit(
         'select-node',
         props.nodes.find((n) => n.id === d.id) ?? null,

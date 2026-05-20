@@ -20,6 +20,8 @@ import type {
   NetworkProfilingCreateRequest,
   NetworkProfilingCreateResponse,
   NetworkProfilingKeepAliveResponse,
+  ProcessRelationEndpointRef,
+  ProcessRelationMetricsResponse,
   ProcessTopologyResponse,
 } from '@skywalking-horizon-ui/api-client';
 import type { BffClient } from '../client';
@@ -62,6 +64,24 @@ export class NetworkProfileApi {
     return this.bff.request<NetworkProfilingKeepAliveResponse>(
       'POST',
       `/api/ebpf/network/tasks/${encodeURIComponent(taskId)}/keep-alive`,
+    );
+  }
+
+  /** Process-relation (edge) metrics for a clicked process→process call.
+   *  `layerKey` selects the processTopology MQE config; source/dest are
+   *  identified by service / instance / process NAME. */
+  relationMetrics(
+    layerKey: string,
+    body: {
+      source: ProcessRelationEndpointRef;
+      dest: ProcessRelationEndpointRef;
+      windowMinutes?: number;
+    },
+  ): Promise<ProcessRelationMetricsResponse> {
+    return this.bff.request<ProcessRelationMetricsResponse>(
+      'POST',
+      `/api/layer/${encodeURIComponent(layerKey)}/ebpf/network/process-relation-metrics`,
+      body,
     );
   }
 }

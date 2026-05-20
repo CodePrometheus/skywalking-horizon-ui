@@ -39,13 +39,14 @@ import type {
   DashboardScope,
   DashboardWidget,
   EndpointDependencyConfig,
+  ProcessTopologyConfig,
   ServiceNamingRule,
   TopologyConfig,
   TopologyMetricDef,
   TracesConfig,
 } from '@skywalking-horizon-ui/api-client';
 
-export type { TopologyConfig, EndpointDependencyConfig, TopologyMetricDef, TracesConfig, ServiceNamingRule };
+export type { TopologyConfig, EndpointDependencyConfig, ProcessTopologyConfig, TopologyMetricDef, TracesConfig, ServiceNamingRule };
 
 export interface LayerComponentFlags {
   service?: boolean;
@@ -205,6 +206,10 @@ export interface LayerTemplate {
   /** API-dependency dashboard config — operator-editable node + edge MQE.
    *  When absent the loader fills it from {@link BOOSTER_ENDPOINT_DEP_DEFAULTS}. */
   endpointDependency?: EndpointDependencyConfig;
+  /** Process-topology (network-profiling) edge-metric config — operator-
+   *  editable ProcessRelation MQE. When absent the loader fills it from
+   *  {@link BOOSTER_PROCESS_TOPOLOGY_DEFAULTS}. */
+  processTopology?: ProcessTopologyConfig;
   /** Traces tab config. The `source` field picks which trace backend
    *  the UI's filter selector defaults to (`both` shows two parallel
    *  tables; `native` / `zipkin` pin to one). Default `both` when
@@ -302,6 +307,34 @@ export const BOOSTER_ENDPOINT_DEP_DEFAULTS: EndpointDependencyConfig = {
     { id: 'respTime', label: 'Avg response time', mqe: 'endpoint_relation_resp_time', unit: 'ms', aggregation: 'avg' },
     { id: 'p95', label: 'p95', mqe: "endpoint_relation_percentile{p='95'}", unit: 'ms', aggregation: 'avg' },
     { id: 'sla', label: 'SLA', mqe: 'endpoint_relation_sla/100', unit: '%', aggregation: 'avg' },
+  ],
+};
+
+/**
+ * Defaults for the network-profiling process-topology edge panel. The
+ * metric names come from OAP's `meter-analyzer-config/network-profiling.yaml`
+ * (metricPrefix `process_relation`), validated live against the demo's
+ * mesh process topology (envoy → pilot-agent returns non-null cpm). OAP
+ * observes each conversation from both eBPF probe sides, so client and
+ * server families both exist. cpm metrics are per-minute rates; the
+ * `*_total_bytes` are cumulative counters summed over the window.
+ */
+export const BOOSTER_PROCESS_TOPOLOGY_DEFAULTS: ProcessTopologyConfig = {
+  edgeClientMetrics: [
+    { id: 'write_cpm', label: 'Write CPM', mqe: 'process_relation_client_write_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'read_cpm', label: 'Read CPM', mqe: 'process_relation_client_read_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'write_bytes', label: 'Write bytes', mqe: 'process_relation_client_write_total_bytes', unit: 'B', aggregation: 'sum' },
+    { id: 'read_bytes', label: 'Read bytes', mqe: 'process_relation_client_read_total_bytes', unit: 'B', aggregation: 'sum' },
+    { id: 'connect_cpm', label: 'Connect CPM', mqe: 'process_relation_client_connect_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'close_cpm', label: 'Close CPM', mqe: 'process_relation_client_close_cpm', unit: 'cpm', aggregation: 'avg' },
+  ],
+  edgeServerMetrics: [
+    { id: 'write_cpm', label: 'Write CPM', mqe: 'process_relation_server_write_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'read_cpm', label: 'Read CPM', mqe: 'process_relation_server_read_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'write_bytes', label: 'Write bytes', mqe: 'process_relation_server_write_total_bytes', unit: 'B', aggregation: 'sum' },
+    { id: 'read_bytes', label: 'Read bytes', mqe: 'process_relation_server_read_total_bytes', unit: 'B', aggregation: 'sum' },
+    { id: 'connect_cpm', label: 'Connect CPM', mqe: 'process_relation_server_connect_cpm', unit: 'cpm', aggregation: 'avg' },
+    { id: 'close_cpm', label: 'Close CPM', mqe: 'process_relation_server_close_cpm', unit: 'cpm', aggregation: 'avg' },
   ],
 };
 
@@ -540,6 +573,15 @@ export function endpointDependencyConfigFor(
 ): EndpointDependencyConfig {
   if (template?.endpointDependency) return template.endpointDependency;
   return BOOSTER_ENDPOINT_DEP_DEFAULTS;
+}
+
+/** Resolve the process-topology (network-profiling) config — same
+ *  fallback rule. */
+export function processTopologyConfigFor(
+  template: LayerTemplate | null,
+): ProcessTopologyConfig {
+  if (template?.processTopology) return template.processTopology;
+  return BOOSTER_PROCESS_TOPOLOGY_DEFAULTS;
 }
 
 /** Resolve the traces tab config. Defaults to surfacing both

@@ -41,8 +41,11 @@ import type {
   NetworkProfilingSampling,
   ProcessCall,
   ProcessNode,
+  ProcessRelationEndpointRef,
+  ProcessRelationMetricsResponse,
 } from '@/api/client';
 import ProcessTopologyGraph from '@/layer/profiling/ProcessTopologyGraph.vue';
+import Sparkline from '@/components/charts/Sparkline.vue';
 import Icon from '@/components/icons/Icon.vue';
 
 const route = useRoute();
@@ -129,6 +132,80 @@ async function loadTopology(): Promise<void> {
 
 const selectedNode = ref<ProcessNode | null>(null);
 const selectedCall = ref<ProcessCall | null>(null);
+
+// ── Edge (process-relation) metrics ────────────────────────────────
+const relationMetrics = ref<ProcessRelationMetricsResponse | null>(null);
+const relationLoading = ref(false);
+const relationError = ref<string | null>(null);
+
+function nodeById(id: string): ProcessNode | undefined {
+  return nodes.value.find((n) => n.id === id);
+}
+function endpointRef(n: ProcessNode): ProcessRelationEndpointRef {
+  return {
+    serviceName: n.serviceName,
+    serviceInstanceName: n.serviceInstanceName,
+    processName: n.name,
+    // Process-topology services are agent/rover-monitored = normal.
+    normal: true,
+  };
+}
+
+// Refire when the operator clicks a different edge. The detail area
+// resets first (cascade-clear), then resolves async — never leaves a
+// stale conversation's numbers under the new edge's header.
+watch(selectedCall, async (call) => {
+  relationMetrics.value = null;
+  relationError.value = null;
+  if (!call) return;
+  const src = nodeById(call.source);
+  const dst = nodeById(call.target);
+  if (!src || !dst) {
+    relationError.value = 'Edge endpoints not in the current topology.';
+    return;
+  }
+  relationLoading.value = true;
+  try {
+    relationMetrics.value = await bffClient.networkProfile.relationMetrics(layerKey.value, {
+      source: endpointRef(src),
+      dest: endpointRef(dst),
+      windowMinutes: windowMinutes.value,
+    });
+    if (!relationMetrics.value.reachable && relationMetrics.value.error) {
+      relationError.value = relationMetrics.value.error;
+    }
+  } catch (e) {
+    relationError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    relationLoading.value = false;
+  }
+});
+
+/** Latest non-null value in a series, for the headline number next to
+ *  each metric's sparkline. cpm/bytes can go null at the tail (no data
+ *  in the most recent bucket) so we scan backwards. */
+function latestValue(values: Array<number | null>): number | null {
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i] !== null && values[i] !== undefined) return values[i];
+  }
+  return null;
+}
+function fmtMetric(v: number | null, unit?: string): string {
+  if (v === null) return '—';
+  if (unit === 'B') {
+    if (v >= 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)} MB`;
+    if (v >= 1024) return `${(v / 1024).toFixed(1)} KB`;
+    return `${v} B`;
+  }
+  const n = Number.isInteger(v) ? v : Number(v.toFixed(2));
+  return unit ? `${n} ${unit}` : String(n);
+}
+const sourceProcessName = computed(
+  () => (selectedCall.value && nodeById(selectedCall.value.source)?.name) || '—',
+);
+const targetProcessName = computed(
+  () => (selectedCall.value && nodeById(selectedCall.value.target)?.name) || '—',
+);
 
 async function keepAlive(): Promise<void> {
   if (!currentTask.value) return;
@@ -307,13 +384,40 @@ function fmtTime(ms: number): string {
           </dl>
         </div>
         <div v-else-if="selectedCall">
-          <h5>Edge</h5>
+          <h5>Conversation</h5>
+          <div class="edge-pair">
+            <span class="mono">{{ sourceProcessName }}</span>
+            <span class="muted">→</span>
+            <span class="mono">{{ targetProcessName }}</span>
+          </div>
           <dl class="kv">
             <dt>Detect points</dt><dd>{{ selectedCall.detectPoints.join(', ') }}</dd>
             <dt>Source comp.</dt><dd>{{ (selectedCall.sourceComponents ?? []).join(', ') || '—' }}</dd>
             <dt>Target comp.</dt><dd>{{ (selectedCall.targetComponents ?? []).join(', ') || '—' }}</dd>
-            <dt>ID</dt><dd class="mono">{{ selectedCall.id }}</dd>
           </dl>
+
+          <div class="edge-metrics">
+            <div v-if="relationLoading" class="muted sm">Reading process-relation metrics…</div>
+            <div v-else-if="relationError" class="banner err sm">{{ relationError }}</div>
+            <template v-else-if="relationMetrics">
+              <div
+                v-for="side in (['client', 'server'] as const)"
+                :key="side"
+                class="metric-side"
+              >
+                <div class="side-label">{{ side }} side</div>
+                <div
+                  v-for="m in relationMetrics[side]"
+                  :key="m.id"
+                  class="metric-row"
+                >
+                  <span class="m-label">{{ m.label }}</span>
+                  <Sparkline :values="m.values" :width="72" :height="16" />
+                  <span class="m-val mono">{{ fmtMetric(latestValue(m.values), m.unit) }}</span>
+                </div>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
     </div>
@@ -608,7 +712,7 @@ function fmtTime(ms: number): string {
   border-top: 1px solid var(--sw-line);
   background: var(--sw-bg-1);
   padding: 8px 14px;
-  max-height: 220px;
+  max-height: 320px;
   overflow-y: auto;
 }
 .detail h5 {
@@ -640,6 +744,45 @@ function fmtTime(ms: number): string {
   font-family: var(--sw-mono);
   font-size: 10.5px;
   color: var(--sw-fg-1);
+}
+.edge-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--sw-fg-0);
+}
+.edge-pair .mono { font-family: var(--sw-mono); }
+.edge-metrics {
+  margin-top: 10px;
+  border-top: 1px dashed var(--sw-line);
+  padding-top: 8px;
+}
+.sm { font-size: 11px; }
+.metric-side { margin-bottom: 8px; }
+.side-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sw-fg-3);
+  margin-bottom: 4px;
+}
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr 72px 96px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+.metric-row .m-label { color: var(--sw-fg-2); }
+.metric-row .m-val {
+  text-align: right;
+  color: var(--sw-fg-0);
+  font-family: var(--sw-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .dlg-mask {

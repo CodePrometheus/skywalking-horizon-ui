@@ -65,6 +65,12 @@ function layerRoute(): RouteRecordRaw {
       // service universe drifts from SkyWalking's; that input lives
       // inside the view and is independent of the shell picker.
       { path: 'trace', component: () => import('@/layer/traces/LayerTracesEntry.vue') },
+      // Second trace tab — only surfaced in the sidebar when the layer's
+      // `traces.source` is `both`. Native + Zipkin spans differ in format
+      // and query conditions, so they get separate tabs rather than an
+      // in-tab toggle. The entry component renders the Zipkin view for
+      // this path regardless of source.
+      { path: 'zipkin-trace', component: () => import('@/layer/traces/LayerTracesEntry.vue') },
       { path: 'logs', component: () => import('@/layer/logs/LayerLogsView.vue') },
       { path: 'trace-profiling', component: () => import('@/layer/profiling/LayerTraceProfilingView.vue') },
       { path: 'ebpf-profiling', component: () => import('@/layer/profiling/LayerEBPFProfilingView.vue') },

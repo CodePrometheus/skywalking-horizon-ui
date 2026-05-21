@@ -198,17 +198,16 @@ session:
   cookieName: horizon_sid
   cookieSecure: false           # set true behind HTTPS
 
-audit:
-  file: ./horizon-audit.jsonl
-
-setup:
-  file: ./horizon-setup.json
-
-alarms:
-  file: ./horizon-alarms.json
+# State files (audit log, setup state, alarm state, wire debug log).
+# Leave the `file:` paths unset and the right location is chosen for you:
+#   • published container image → /data/*    (its writable volume)
+#   • local binary run          → ./horizon-* (relative to the working dir)
+# Set an explicit `file:` under each block ONLY if you need a specific
+# location — and make sure the running process can write it (in the image
+# that means a path under /data, since the non-root `horizon` user cannot
+# write /app).
 
 debugLog:
   enabled: false
-  file: ./horizon-wire.jsonl
   maxBodyChars: 8192
   redactAuthHeaders: true

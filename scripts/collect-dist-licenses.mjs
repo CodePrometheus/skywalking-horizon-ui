@@ -206,7 +206,9 @@ function readPkgJson(pkgPath) {
 function noticeYear() {
   try {
     const txt = readFileSync(resolve(repoRoot, 'NOTICE'), 'utf8');
-    const m = txt.match(/Copyright\s+(\d{4})/);
+    // Capture the full copyright span (e.g. `2017-2026`), not just the
+    // first year — Apache SkyWalking dates from its 2017 ASF inception.
+    const m = txt.match(/Copyright\s+(\d{4}(?:-\d{4})?)\s+The Apache Software Foundation/);
     if (m) return m[1];
   } catch {
     /* fall through */

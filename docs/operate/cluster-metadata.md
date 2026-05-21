@@ -62,18 +62,6 @@ This is **informational only**. A 3-node OAP cluster behind one DNS name should 
 
 The cluster-members section is **not** required for Horizon to function; it is a sanity check that the operator's expectation matches reality.
 
-## Coming soon strip
-
-The page documents upcoming additions inline. These are not implemented today; the strip is there so operators know what's on the roadmap and what is and isn't currently surfaced:
-
-- **Per-node module activity matrix** — module × provider × node grid. Requires per-node admin calls (currently the dump is consumed cluster-wide).
-- **Storage backend health** — BanyanDB / Elasticsearch / JDBC: connection pool, index lag, throughput.
-- **Receiver activity** — gRPC / HTTP / Kafka / OTLP: throughput, queue depth.
-- **Effective-configuration tree** — two-node diff of merged config (advanced troubleshooting).
-- **TTL & retention grid** — hot / warm / cold storage timeline per metric scope.
-
-When these land, this page is where they will surface; the data flow will follow the same pattern as today's panes (BFF preflight call → cached → polled).
-
 ## Reading the page during an incident
 
 1. **Both panes green?** Backend is fine; the problem is elsewhere (network from browser, BFF process, OAP-side data ingestion).

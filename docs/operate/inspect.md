@@ -1,6 +1,6 @@
 # Inspect
 
-Path: `/admin/inspect`. Verb: `inspect:read` (granted by maintainer, operator, admin).
+Path: `/operate/inspect`. Verb: `inspect:read` (granted by maintainer, operator, admin).
 
 The Inspect page lets the operator browse OAP's live metric catalog and enumerate the entities (services, instances, endpoints, processes, …) that have data for a given metric. It is built on OAP's **Inspect API**, which is **v11-only** — the page does not render on v10.
 

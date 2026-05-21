@@ -1,150 +1,83 @@
-# Menu Structure
+# Menu and Layers
 
-The Horizon sidebar is **composed from active OAP layers**, not hand-written. There is no "edit sidebar items" page — what shows up in the sidebar is a function of:
+Horizon's sidebar follows the data OAP reports. You do not hand-build a menu tree in Horizon; you make OAP expose layers, then use templates and user preferences to control how those layers appear.
 
-1. Which layers OAP currently exposes via `listLayers`.
-2. The bundled per-layer JSON templates (`apps/bff/src/bundled_templates/layers/<key>.json`).
-3. Per-user preferences (landing order, visibility toggles) held in the setup store.
+## What Controls the Sidebar
 
-This page documents how those three combine into the live sidebar.
-
-## Data flow
-
-1. **OAP discovery.** Layers reported by `listLayers` are "active".
-2. **Template merge.** For each active layer, the bundled `bundled_templates/layers/<key>.json` (or defaults if absent) is merged with OAP-provided data, contributing template cosmetics: `alias`, `color`, `group`, `visibility`, `caps`, `slots`, `header`, `overview`, `log`, `traces`, `naming`, `documentLink`.
-3. **Counts.** Each layer carries a service count from `listServices(layer)`. The count is `-1` if OAP is unreachable.
-4. **Sidebar render.** The sidebar shows the layer list, ordered per the user's landing-order preference.
-
-## The `MenuResponse` shape
-
-```ts
-interface MenuResponse {
-  layers: LayerDef[];
-  generatedAt: number;
-  oap: { reachable: boolean; queryUrl: string; error?: string };
-}
-
-interface LayerDef {
-  key: string;                          // OAP layer enum (UPPER_SNAKE)
-  name: string;                         // Display name from OAP
-  color: string;                        // Sidebar accent (hex or CSS var)
-  serviceCount: number;                 // From listServices; -1 if OAP unreachable
-  active: boolean;                      // True iff returned by listLayers
-  group?: string;                       // Sidebar grouping label
-  visibility?: 'public' | 'operate';    // Section placement
-  normal?: boolean | null;              // Affects MQE scope (per OAP)
-  level: number | null;                 // From listLayerLevels (sort hint)
-  documentLink?: string;                // External docs URL
-  slots: LayerSlots;                    // Entity term overrides
-  caps: LayerCaps;                      // Feature toggles
-  header?: LayerHeaderConfig;           // Service-list picker columns
-  overview?: LayerOverviewConfig;       // Overview tile config
-  log?: LogConfig;                      // Logs tab scope
-  traces?: { source?: 'native' | 'zipkin' | 'both' };
-  naming?: ServiceNamingRule;
-}
-```
-
-## Sidebar sections
-
-The sidebar has two main sections + the static Operate group:
-
-### Layers
-
-Active, public layers (`visibility: 'public'`, `serviceCount > 0`). Sorted by:
-
-1. Per-user `landing.priority` from the setup store.
-2. Falls back to `level` from `listLayerLevels` when no user priority is set.
-
-A layer with `serviceCount === 0` is hidden from the Layers section but still available for the admin's setup screen ("enable this layer when services appear").
-
-### Operate (per-layer, optional)
-
-Layers with `visibility: 'operate'` go under the Operate group instead of Layers. Used for self-observability layers (e.g., the OAP cluster's own metrics layer).
-
-### Operate (static)
-
-These items are always present (RBAC permitting):
-
-- Cluster Status (`cluster:read`)
-- Inspect (`inspect:read`)
-- DSL Management (`rule:read`)
-- Live Debugger (`live-debug:read`)
-- Alarm Setup (`alarm-setup:read`)
-- Alarm Rules (`alarm-rule:read`)
-
-These are not layer-derived; they are first-class Horizon features.
-
-### Admin (RBAC permitting)
-
-- Auth Status, Users, Roles & Permissions (each verb-gated; see [Admin Pages](../access-control/admin-pages.md)).
-- Overview Templates editor (`overview:write`).
-- Layer Templates editor (`dashboard:write`).
-
-## Per-layer composition
-
-When a user clicks a layer in the sidebar, the first enabled sub-route is picked from this priority order:
-
-```
-service → instance → endpoint → topology → trace → logs → profiling
-```
-
-The enablement comes from the template's `components` flags (mapped onto `caps` in the menu response):
-
-```json
-{
-  "key": "GENERAL",
-  "components": {
-    "service": true,
-    "instance": true,
-    "endpoint": true,
-    "topology": true,
-    "trace": true,
-    "logs": false,
-    "profiling": true
-  }
-}
-```
-
-A layer with `components.service: false` and only `topology: true` will land directly on the Topology tab when clicked.
-
-## Customization surface
-
-| Want to | Edit |
+| Source | What it controls |
 |---|---|
-| Rename a layer in the sidebar | `alias` in `bundled_templates/layers/<key>.json` |
-| Change a layer's color | `color` |
-| Group several layers under one collapsible header | `group` (same string on multiple layers) |
-| Move a layer into the Operate section | `visibility: operate` |
-| Hide a tab on a layer | flip the corresponding `components.*` flag |
-| Change which sub-route is the landing tab | reorder via `components` flags (the leftmost enabled wins, per priority above) |
-| Add an external doc link | `documentLink` |
-| Re-order layers in the sidebar | per-user via the landing-order control (setup store) |
-| Add a brand-new layer | OAP-side first (must show up in `listLayers`), then add a template — see [Adding a New Layer](adding-a-new-layer.md) |
+| OAP layers | Whether a layer exists and whether it has services. |
+| Layer templates | Display name, color, group, visible tabs, service-list columns, trace/log behavior, and dashboard widgets. |
+| User preference | Personal ordering of visible layers on the landing page and sidebar. |
+| RBAC | Whether operate, dashboard setup, and admin pages are visible for the signed-in user. |
 
-The menu is **never user-editable as a tree** in the UI. Customization is always via:
+The result is intentionally reactive: when OAP starts reporting data for a layer, Horizon shows it; when a user lacks a permission, Horizon hides the page link.
 
-- Templates (for cosmetics + feature toggles), or
-- The setup store (for per-user ordering), or
-- OAP itself (for layer existence).
+## Main Sidebar Areas
 
-## What "active" means
+| Area | What appears there |
+|---|---|
+| Overviews | Public overview dashboards, when the user has `overview:read`. |
+| Alarms | The active alarm board, when the user has `alarms:read`. |
+| Layers | Active public OAP layers with at least one service. |
+| Platform monitoring | Cluster Status, Data Retention, and OAP Configuration. |
+| Operate | Alerting rules, DSL Management, Live Debugger, Capture History, and Metrics Inspect. |
+| Dashboard setup | Overview templates, Layer dashboards, Alert page setup, and Global defaults. |
+| Admin | Users, Auth status, and Roles & permissions. |
 
-A layer is `active: true` when OAP returns it from `listLayers`. An inactive layer can still appear in the menu response (so the admin can enable it via the setup page) but is **not shown in the sidebar**. Once OAP starts reporting it (e.g., once data arrives for that layer), the sidebar shows it on the next `/api/menu` refresh.
+Only rows the current user can open are shown.
 
-This means: **stand up your OAP receivers first, install/configure them to ingest data for the layer you want, then refresh Horizon**. The sidebar is purely reactive to OAP state.
+## Layer Visibility
 
-## When OAP is unreachable
+A layer appears under **Layers** when all of these are true:
 
-`/api/menu` returns `oap.reachable: false` and `serviceCount: -1` for every layer. The sidebar still renders the last-known shape (the BFF caches the most recent successful response in memory) with an "OAP unreachable" banner. This avoids the UX collapse of a fully empty sidebar during a brief OAP blip.
+1. OAP reports the layer.
+2. OAP reports at least one service in that layer.
+3. The layer template uses public visibility.
 
-## Polling cadence
+If a layer is meant for SkyWalking self-observability rather than application observability, set its template visibility to `operate`; Horizon places it under the Operate area instead of the main Layers list.
 
-- The UI fetches `/api/menu` on mount and on tab focus (return-to-tab triggers a refresh).
-- The BFF does not cache `/api/menu` responses cross-request — every call re-queries OAP. For very large layer counts this can be tuned; file an issue if you see latency.
+## First Tab for a Layer
+
+When a user clicks a layer, Horizon opens the first enabled tab in this order:
+
+```text
+service -> instance -> endpoint -> topology -> trace -> logs -> profiling
+```
+
+Disable unsupported tabs in the layer template. For example, a layer without traces should turn the trace tab off so users do not land on an empty page.
+
+## Common Changes
+
+| Goal | Where to change it |
+|---|---|
+| Rename a layer | Layer template `alias`. |
+| Change a layer color | Layer template `color`. |
+| Group related layers | Same layer template `group` value on each layer. |
+| Move a layer to Operate | Layer template `visibility: operate`. |
+| Hide a tab | Layer template `components`. |
+| Change layer order | User layer-order preference. |
+| Add a new layer | Add it in OAP first, then add a Horizon layer template. |
+
+Use **Dashboard setup → Layer dashboards** for normal template edits. Save locally to preview, then sync to OAP when you want the change published for everyone.
+
+## When OAP Is Unreachable
+
+If OAP is unreachable, Horizon keeps the last known sidebar shape in memory and shows an OAP-unreachable banner. Service counts may show as unknown until OAP is reachable again.
+
+This avoids the worst failure mode during a short OAP outage: an empty sidebar that makes operators think configuration disappeared.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Layer missing | Confirm OAP reports the layer and at least one service. |
+| Layer appears in Operate, not Layers | Check template visibility. |
+| Expected tab missing | Check the layer template components. |
+| User cannot see an admin page | Check their role grants in Roles & permissions. |
 
 ## Related
 
-- [Layer Dashboard Templates](layer-templates.md) — the JSON shape that backs each layer.
-- [Overview Templates](overview-templates.md) — the war-room overviews (separate from the sidebar).
-- [Adding a New Layer](adding-a-new-layer.md) — end-to-end recipe.
+- [Layer Dashboard Templates](layer-templates.md)
+- [Overview Templates](overview-templates.md)
+- [Add a Layer](adding-a-new-layer.md)

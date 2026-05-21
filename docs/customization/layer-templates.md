@@ -220,29 +220,23 @@ A layer without an explicit `instance` widget set will reuse `service` widgets o
 
 ### Dashboard widget fields
 
-```ts
-interface DashboardWidget {
-  id: string;
-  title: string;
-  tip?: string;
-  type: 'card' | 'line' | 'top' | 'record';
-  expressions: string[];
-  expressionLabels?: string[];      // tab labels for 'top'
-  expressionUnits?: string[];       // per-expression unit override
-  expressionAxes?: number[];        // 0 = left, 1 = right (dual y-axis)
-  unit?: string;                    // widget-level unit suffix
-  format?: 'int' | 'decimal' | 'compact';
-  span?: number;                    // 12-col span; default 4
-  rowSpan?: number;                 // row count; default 1
-  visibleWhen?: string;             // visibility predicate
-  layerScope?: boolean;             // evaluate against layer rather than selected service
-  // legacy 24-col coordinates (back-compat with old templates):
-  x?: number; y?: number; w?: number; h?: number;
-}
-```
-
 | Field | Notes |
 |---|---|
+| `id` | Unique widget id within the dashboard. |
+| `title` | Widget title shown in the card header. |
+| `tip` | Optional hover hint. |
+| `type` | Widget kind, usually `card`, `line`, `top`, `record`, or `table`. |
+| `expressions[]` | MQE expressions to run. |
+| `expressionLabels[]` | Tab labels for `top`, legend labels for `line`. |
+| `expressionUnits[]` | Per-expression unit override. |
+| `expressionAxes[]` | `0` for left axis, `1` for right axis on dual-axis line charts. |
+| `unit` | Widget-level unit suffix. |
+| `format` | `int`, `decimal`, or `compact`. |
+| `span` | 12-column width. Default 4. |
+| `rowSpan` | Row count. Default 1. |
+| `visibleWhen` | Visibility predicate. |
+| `layerScope` | Evaluate against the whole layer rather than the selected service. |
+| `x`, `y`, `w`, `h` | Legacy coordinates kept for old templates. Prefer `span` and `rowSpan`. |
 | `type` | `card` for single scalar (MQE collapses to one number); `line` for time-series; `top` for sorted list; `record` for tabular records (slow SQL, slow statements). |
 | `expressions[]` | Array of MQE expressions. `card` typically uses one; `line` uses one per series; `top` may use multiple (each becomes a tab). |
 | `expressionLabels[]` | Used by `top` to label each tab. |
@@ -325,9 +319,9 @@ Service-name parsing rule. Extracts a cluster (or other token) from the OAP-repo
 
 When set, the layer's service list groups by `cluster`. Without it, services are listed flat.
 
-## Admin editor — edit locally, publish on your terms
+## Admin Editor
 
-Layer templates are editable at runtime via `/admin/layer-templates` (verb `dashboard:write`). The editor shows the JSON tree with per-field type-aware controls; changes are validated against the same schema as the bundled files.
+Layer templates are editable at runtime via **Dashboard setup → Layer dashboards** (`/admin/layer-dashboards`, verb `dashboard:write`). The editor shows layer-specific controls for service, instance, endpoint, topology, trace, log, and profiling views.
 
 The save/publish model has two steps:
 
@@ -357,7 +351,7 @@ Read the bundled JSON for the closest layer to yours before authoring a new temp
 
 ## Hot reload
 
-Template changes (bundled or admin-edited) take effect on the next `/api/menu` or `/api/layer/:key/dashboard/config` request. Browsers see the new shape on the next page navigation. No BFF restart needed.
+Template changes made in the admin editor take effect on the next menu or dashboard refresh. Bundled file changes made outside Horizon require a BFF restart.
 
 ## Common patterns
 

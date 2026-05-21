@@ -1,4 +1,4 @@
-# setup and alarms
+# Runtime State Files
 
 State files for user-configured settings. Both write JSON, both are managed by the BFF, neither needs hand-editing.
 

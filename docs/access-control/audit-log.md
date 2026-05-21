@@ -2,23 +2,21 @@
 
 The audit log records sensitive operations as JSON Lines, one event per line, append-only. Configure the path via `audit.file` in `horizon.yaml` (see [Setup → audit](../setup/audit.md)).
 
-## Event schema
+## Event Fields
 
 Each event has these fields:
 
-```ts
-interface AuditEvent {
-  ts: string;                        // ISO-8601 timestamp
-  actor: string | null;              // username; null for system events
-  action: string;                    // e.g. 'auth.login', 'rule.addOrUpdate'
-  verb?: string;                     // RBAC verb checked, if any
-  target?: string;                   // resource id / name
-  outcome: string;                   // 'success' | 'failure' | 'break-glass' | HTTP status | OAP status
-  details?: Record<string, unknown>; // free-form context
-  fromIp?: string;                   // requester IP
-  sessionId?: string;
-}
-```
+| Field | Meaning |
+|---|---|
+| `ts` | ISO-8601 timestamp. |
+| `actor` | Username, or `null` for system events. |
+| `action` | Operation name, such as `auth.login` or `rule.addOrUpdate`. |
+| `verb` | RBAC verb checked, when applicable. |
+| `target` | Resource id or name, when applicable. |
+| `outcome` | `success`, `failure`, `break-glass`, or the upstream HTTP/OAP status. |
+| `details` | Extra context for the operation. |
+| `fromIp` | Requester IP. |
+| `sessionId` | Session id, when a session exists. |
 
 One event per line, `\n`-terminated. Use `jq -c` to filter:
 
@@ -28,7 +26,7 @@ tail -f horizon-audit.jsonl | jq -c 'select(.action | startswith("auth."))'
 
 ## Recorded actions
 
-The recorded set evolves with the codebase. As of the current build:
+The recorded set can grow between releases. In 0.5.0:
 
 | Action | Outcome values | Notes |
 |---|---|---|

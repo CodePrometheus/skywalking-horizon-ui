@@ -6,17 +6,16 @@ The sidebar on the left of this site is the canonical entry point — every sect
 
 ## How it's organized
 
-- **Design Target** — what Horizon UI is built for and how it differs from booster-ui.
-- **Compatibility** — which OAP version + modules + ports Horizon needs, and what each pane of the Cluster Status page actually probes.
-- **Setup** — quick start, the container image, and a field-by-field reference for `horizon.yaml`.
-- **Access Control** — local + LDAP auth, break-glass admin, the role / verb model, the audit log, and the admin pages.
-- **Customization** — how the sidebar is composed from OAP layers, how to author layer dashboard and overview templates, and the end-to-end recipe for adding a new layer.
-- **Components** — field-by-field reference for every widget primitive and the wrapped chart components.
-- **Operate** — Cluster Status & Metadata, and the Inspect page (metric catalog + entity enumerator).
+- **Setup** — quick start, container deployment, and the `horizon.yaml` settings operators usually need.
+- **Compatibility** — OAP version, network ports, required modules, and cluster-status checks.
+- **Operate** — Cluster Status, Data Retention, OAP Configuration, and Metrics Inspect.
+- **Access Control** — local users, LDAP login, break-glass access, roles, audit log, and admin pages.
+- **Customization** — layer menus, dashboard templates, overview templates, and adding a layer.
+- **Reference** — design target and widget reference for template authors.
 
 ## Quick orientation
 
-Horizon runs as two pieces: a Vue single-page app (the UI) and a Backend For Frontend (the BFF). The UI **only** talks to the BFF; the BFF is the single place that talks to OAP — query GraphQL, admin REST, and Zipkin. Every OAP-side requirement is enforced once, in the BFF, not scattered through the UI.
+Horizon runs as a browser UI plus a Horizon server process. The browser talks only to the Horizon server; the server talks to OAP for query, admin, and Zipkin traffic. That keeps OAP connectivity, credentials, and compatibility checks in one place.
 
 ## Where to start, by role
 
@@ -26,7 +25,7 @@ Horizon runs as two pieces: a Vue single-page app (the UI) and a Backend For Fro
 | Wiring up LDAP / configuring roles | Access Control → LDAP Backend, then RBAC. |
 | Customizing per-layer dashboards | Customization → Layer Dashboard Templates. |
 | Building a "war room" overview | Customization → Overview Templates. |
-| Diagnosing a "module disabled" warning | Compatibility → Required OAP Modules and Cluster Status Check Sequence. |
+| Diagnosing a "module disabled" warning | Compatibility → Required OAP Modules, then Operate → Cluster Status. |
 
 ## Live demo
 

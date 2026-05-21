@@ -70,50 +70,22 @@ The 72 px row height is tuned for KPI tile content; widgets that need more verti
 
 ## Widget shape (common fields)
 
-```ts
-interface OverviewWidget {
-  id: string;
-  title: string;
-  tip?: string;
-  layer?: string;
-  type: 'metric' | 'topology' | 'section-break' | 'kpi-tile' | 'alarms' | 'metric-composite';
-  span?: number;            // 1–12
-  rowSpan?: number;         // 1–8
-  // type-specific fields below
-  mqe?: string;             // metric
-  unit?: string;            // metric
-  aggregation?: 'sum' | 'avg'; // metric
-  cols?: number;            // section-break
-  kpis?: OverviewKpi[];     // kpi-tile, metric-composite
-  showCount?: boolean;      // kpi-tile
-  limit?: number;           // alarms
-}
-```
-
 | Field | Notes |
 |---|---|
 | `id` | Unique within the dashboard. |
 | `title` | Card title (not used by `section-break` — uses `title` as the section header). |
 | `tip` | Optional one-line hover hint next to the title. |
 | `layer` | Layer key (UPPER_SNAKE). Used to scope MQE evaluation. Optional for `section-break` and `alarms` (alarms can scope server-side if the layer is set). |
+| `type` | One of `metric`, `topology`, `section-break`, `kpi-tile`, `alarms`, or `metric-composite`. |
 | `span` | Column span. Defaults vary per widget type. |
 | `rowSpan` | Row span. Defaults vary per widget type. |
+| `mqe`, `unit`, `aggregation` | Metric-specific fields. |
+| `cols` | Section-break column count for following widgets. |
+| `kpis`, `showCount`, `limit` | Type-specific fields described below. |
 
 ## `OverviewKpi`
 
 Used by `kpi-tile` and `metric-composite`:
-
-```ts
-interface OverviewKpi {
-  label: string;
-  mqe?: string;
-  unit?: string;
-  aggregation?: 'sum' | 'avg';
-  style?: 'number' | 'progress-bar';
-  max?: number;
-  source?: 'mqe' | 'service-count';
-}
-```
 
 | Field | Notes |
 |---|---|
@@ -232,9 +204,9 @@ Following widgets render in a **6-column** grid (rather than 12) until the next 
 
 Read-only — Horizon does not support acknowledge / close / silence operations. Alarm recovery is backend-automatic.
 
-## Admin editor
+## Admin Editor
 
-Overview templates are editable at runtime via `/admin/overview-templates` (verb `overview:write`). The editor:
+Overview templates are editable at runtime via **Dashboard setup → Overview templates** (`/admin/overview-templates`, verb `overview:write`). The editor:
 
 - Lists all bundled overviews + any added ones, with widget count and editable flag.
 - For each overview, shows the widget array with per-widget controls.
@@ -252,22 +224,16 @@ Overview templates are editable at runtime via `/admin/overview-templates` (verb
 - **Add / remove widgets** with the type picker.
 - **Preview** renders the in-progress template against live OAP data.
 
-Changes go through `POST /api/admin/overview-templates/:id`, validated server-side before being written.
+The save/publish model has two steps:
 
-## HTTP API
+1. **Save locally.** The edit is written to the local bundled copy and renders immediately for preview. OAP is not changed yet.
+2. **Publish.** **Sync all to OAP** pushes diverged overview templates to OAP behind a confirmation that lists the affected templates.
 
-| Method | Path | Verb | Notes |
-|---|---|---|---|
-| GET | `/api/admin/overview-templates` | `overview:read` | List all overviews. |
-| GET | `/api/admin/overview-templates/:id` | `overview:read` | Full config. |
-| POST | `/api/admin/overview-templates/:id` | `overview:write` | Replace config. Validated, cache invalidated on write. |
-| DELETE | `/api/admin/overview-templates/:id` | `overview:write` | Remove overview. |
-
-The view route `/overview/:id` calls `GET /api/overview/:id/data` (verb `metrics:read`) which evaluates the widgets server-side and returns the resolved value set.
+If the local copy differs from OAP, Horizon shows the template as **diverged**. Use **Show diff** to compare local and remote, **Keep my local edits** to preview, or **Use live** to discard the local copy and render the OAP version.
 
 ## Hot reload
 
-Bundled file changes require a BFF restart (templates are loaded at startup). Admin-API edits go through the cache and apply on the next data fetch — no restart needed.
+Admin editor changes apply on the next overview refresh. Bundled file changes made outside Horizon require a BFF restart.
 
 ## Common patterns
 

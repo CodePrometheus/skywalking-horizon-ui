@@ -22,7 +22,7 @@ After successful login, the UI redirects to the page the user was bounced from (
 ## Auth Status
 
 **Path:** `/admin/auth-status`
-**Verb:** `auth:read` (maintainer, admin)
+**Verb:** `auth:read` (admin by default; grant explicitly for delegated security admins)
 
 Auto-refreshes every 30 seconds. The single pane for "is my auth wiring correct?" Shows:
 
@@ -111,7 +111,9 @@ Read-only. To change roles, edit `rbac.roles` in `horizon.yaml`; hot-reload appl
 | `/admin/auth-status` | `auth:read` | (none built-in; assign explicitly) |
 | `/admin/users` | `user:read` | (none built-in; assign explicitly) |
 | `/admin/roles` | `role:read` | (none built-in; assign explicitly) |
-| `/admin/inspect` | `inspect:read` | maintainer, operator, admin |
+| `/operate/inspect` | `inspect:read` | maintainer, operator, admin |
+| `/operate/ttl` | `ttl:read` | maintainer, operator, admin |
+| `/operate/config` | `config:read` | maintainer, operator, admin |
 
 `auth:read`, `user:read`, `role:read` are **not** in any default role. Either grant them via a custom role:
 

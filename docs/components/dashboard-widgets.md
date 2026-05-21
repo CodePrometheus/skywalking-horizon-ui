@@ -14,29 +14,12 @@ Five widget types render on per-layer dashboards. Each `widget.type` you set in 
 
 ## Common widget shape
 
-```ts
-interface DashboardWidget {
-  id: string;
-  title: string;
-  tip?: string;
-  type: 'card' | 'line' | 'top' | 'record' | 'table';
-  expressions: string[];
-  expressionLabels?: string[];
-  expressionUnits?: string[];
-  expressionAxes?: number[];
-  unit?: string;
-  format?: 'int' | 'decimal' | 'compact';
-  tableHeaders?: [string, string];
-  showTableValues?: boolean;
-  span?: number;
-  rowSpan?: number;
-  visibleWhen?: string;
-  layerScope?: boolean;
-}
-```
-
 | Field | Notes |
 |---|---|
+| `id` | Unique widget id within the dashboard. |
+| `title` | Widget title shown in the card header. |
+| `tip` | Optional hover hint. |
+| `type` | One of `card`, `line`, `top`, `record`, or `table`. |
 | `expressions[]` | MQE expressions. `card` typically uses one; `line` one-per-series; `top` one-per-tab; `table` one labeled `latest(…)` metric. |
 | `expressionLabels[]` | Used by `top` for tab labels and by `line` for legend names. |
 | `expressionUnits[]` | Per-expression unit override (mixed-unit charts). |
@@ -258,7 +241,7 @@ The predicate is evaluated on every data refresh; the widget disappears (rather 
 | `top_n(...)` returning labeled list | `top` |
 | Record-shaped output (slow SQL, slow gRPC) | `record` |
 
-The widget editor (planned) will warn on type / MQE mismatches. The schema does not enforce — author carefully.
+The widget editor helps catch common type / MQE mismatches, but it does not replace testing against a live OAP window. After changing a widget, preview it with data before publishing.
 
 ## Per-scope widget sets
 

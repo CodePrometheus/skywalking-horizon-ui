@@ -1,18 +1,26 @@
 # Setup Quick Start
 
-This page is the smallest possible path from "no Horizon" to "Horizon in front of a running OAP". For per-section field reference, see the rest of the **Setup** chapter. For a containerized deployment, see [Container Image](container-image.md) instead — it covers image tags, env vars, volume mounts, and a Kubernetes example.
+This page is the shortest path from "no Horizon" to "Horizon in front of a running OAP". It uses the released binary layout first. For containerized deployments, use [Container Image](container-image.md).
 
 ## Prerequisites
 
 - Apache SkyWalking **OAP 11.x** (native). OAP 10.x runs the data-plane stack (dashboards, traces, logs, topology, alarms, profiling) but the entire admin port — Inspect, DSL Management, Live Debugger, Alarm Rule editor, Cluster Status → Admin pane, and OAP UI-template sync — is v11-only. See [Compatibility → OAP Version](../compatibility/oap-version.md) for the feature-vs-version matrix.
 - Network reachability from the Horizon BFF to the OAP query port (`:12800`) and admin port (`:17128`). See [Network Ports](../compatibility/ports.md).
-- Node.js 20+, pnpm 10+ (for source builds; pinned via Corepack). A pre-built artifact only needs Node.js.
+- Node.js 20+ for the binary tarball. Source builds also need pnpm 10+.
 
 ## Five-step start
 
-### 1. Place `horizon.yaml` next to the BFF
+### 1. Unpack Horizon
 
-Copy `horizon.example.yaml` (in the repo root) to `horizon.yaml` in your working directory. The BFF looks for `./horizon.yaml` by default; override with `HORIZON_CONFIG=/path/to/file`.
+Unpack the binary tarball and copy the example config:
+
+```sh
+tar -xzf apache-skywalking-horizon-ui-0.5.0-bin.tar.gz
+cd apache-skywalking-horizon-ui-0.5.0-bin
+cp horizon.example.yaml horizon.yaml
+```
+
+The binary is self-contained: `server.js`, `node_modules/`, `static/`, and bundled templates are already present. There is no `pnpm install` step.
 
 ### 2. Point Horizon at OAP
 
@@ -36,11 +44,10 @@ oap:
 
 ### 3. Add at least one local user
 
-With no users configured, the BFF boots so the login page can show the setup-required state, but no login can succeed. Generate an argon2 hash:
+With no users configured, Horizon starts but no login can succeed. Generate an Argon2id hash with the source checkout helper or any Argon2id-capable password tool:
 
 ```sh
 pnpm --filter bff cli:hash
-# prompts for the password, prints the hash
 ```
 
 Paste the hash into `auth.local.users`:
@@ -59,13 +66,13 @@ For LDAP setup instead, see [Access Control → LDAP Backend](../access-control/
 
 ### 4. Start the BFF
 
+From inside the unpacked binary directory:
+
 ```sh
-pnpm --filter bff dev
-# or, for a built artifact:
-node apps/bff/dist/server.js
+HORIZON_CONFIG=./horizon.yaml HORIZON_STATIC_DIR=./static node server.js
 ```
 
-The BFF defaults to `127.0.0.1:8081`. For production, bind to `0.0.0.0` and put TLS termination in front:
+Horizon defaults to `127.0.0.1:8081`. For production, bind to `0.0.0.0` and put TLS termination in front:
 
 ```yaml
 server:
@@ -83,6 +90,30 @@ Browse to `http://<bff-host>:8081/`. Log in with the user you created. The first
 - Admin pane should be green if you set `SW_ADMIN_SERVER=default` and the rest of the selectors on OAP.
 
 If either pane is red or yellow, see [Cluster Status Check Sequence](../compatibility/cluster-status.md) for triage.
+
+## Container start
+
+For Docker or Kubernetes, mount the same `horizon.yaml` and `/data` state volume:
+
+```sh
+docker run -d --name horizon \
+  -p 8081:8081 \
+  -v "$PWD/horizon.yaml:/app/horizon.yaml:ro" \
+  -v horizon-state:/data \
+  ghcr.io/apache/skywalking-horizon-ui:0.5.0
+```
+
+See [Container Image](container-image.md) for image tags, Kubernetes YAML, log handling, and probes.
+
+## Source build
+
+Use source builds when you are developing Horizon itself:
+
+```sh
+pnpm install
+pnpm package
+HORIZON_CONFIG=./horizon.yaml HORIZON_STATIC_DIR=./dist/static node dist/server.js
+```
 
 ## Production checklist
 

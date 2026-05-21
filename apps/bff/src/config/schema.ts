@@ -176,6 +176,7 @@ const rbacSchema = z
           'logs:read',
           'topology:read',
           'profile:read',
+          'overview:read',
         ],
         // Viewer baseline plus the platform-monitoring reads (cluster
         // health + OAP internals). Maintainer's whole job is watching
@@ -187,6 +188,7 @@ const rbacSchema = z
           'logs:read',
           'topology:read',
           'profile:read',
+          'overview:read',
           'cluster:read',
           'inspect:read',
           'ttl:read',

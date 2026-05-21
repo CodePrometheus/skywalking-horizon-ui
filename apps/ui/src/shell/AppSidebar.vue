@@ -354,7 +354,7 @@ watch(
     </RouterLink>
 
     <nav ref="navRef" class="sw-nav">
-      <!-- Overviews are gated by `overview:read` (operator / admin). -->
+      <!-- Overviews are gated by `overview:read`. -->
       <template v-if="auth.hasVerb('overview:read')">
         <div class="sw-nav-section sw-nav-section--icon">
           <Icon :name="sectionIcon('Overviews')" />

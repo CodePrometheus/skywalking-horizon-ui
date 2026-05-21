@@ -144,6 +144,8 @@ rbac:
       - profile:read
       - overview:read
       - cluster:read
+      - ttl:read
+      - config:read
       - inspect:read
 
     # Configures observability: dashboards, alarm rules, DSL/OAL,
@@ -157,6 +159,8 @@ rbac:
       - topology:read
       - profile:read
       - cluster:read
+      - ttl:read
+      - config:read
       - inspect:read
       - overview:read
       - overview:write

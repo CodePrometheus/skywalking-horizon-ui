@@ -94,10 +94,10 @@ Each iteration is template + BFF restart. The schema is validated at startup; a 
 
 Once the template stabilizes:
 
-- Open `/admin/layer-templates`, find the layer, click edit, save (no actual changes needed — the act of saving promotes it to admin-managed).
+- Open `/admin/layer-dashboards`, find the layer, click edit, then save locally.
 - Subsequent edits go through the admin UI; you no longer need to rebuild and restart the BFF for cosmetic changes.
 
-The bundled file remains in the BFF as the fallback; admin-managed copies override it.
+The local bundled file remains the fallback. After you publish, the OAP-stored template becomes the runtime copy every Horizon instance reads.
 
 ### 10. Add an overview entry (optional)
 

@@ -48,7 +48,7 @@ The per-layer drill-down presents a single service through every data type SkyWa
 | Logs | log records | per-layer scope (service / instance / endpoint) |
 | Profiling | trace / eBPF / async profiler | scope-aware widget set |
 
-The renderer is template-driven (see [Customization → Layer Dashboard Templates](customization/layer-templates.md)). New layers do not require new Vue files; they require a new JSON template.
+The renderer is template-driven (see [Customization → Layer Dashboard Templates](customization/layer-templates.md)). New layers require a JSON template, not a custom UI build.
 
 ### Customization is the whole key
 
@@ -61,7 +61,7 @@ Every visual decision a site operator wants to make is template-driven:
 - **Overview content** — overview template JSON; type-aware admin editor edits each widget's only-relevant fields.
 - **Authentication / authorization** — `horizon.yaml` + `/admin/auth-status` page.
 
-There is no "add a custom Vue component" extension point — adding rendering primitives is a code change. Adding **content** is always configuration.
+There is no custom UI plugin extension point. Adding a new rendering primitive requires a Horizon release; adding **content** is configuration.
 
 ### Density beats whitespace
 

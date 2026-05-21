@@ -13,7 +13,7 @@ Sessions capture the **role list** at login time, and the verbs they grant are r
 
 ## Verb vocabulary
 
-Twenty-eight verbs grouped into areas:
+Known verbs are grouped into areas:
 
 ### Data reads (the public catalog)
 
@@ -25,12 +25,13 @@ Twenty-eight verbs grouped into areas:
 | `logs:read` | Logs tab on any layer, log detail page. |
 | `topology:read` | Topology tab, topology widgets on overviews. |
 | `profile:read` | Profiling tab (results read-only). |
+| `overview:read` | Public overview dashboards. |
 
 ### Operate — dashboards, rules, diagnostics
 
 | Verb | Gates |
 |---|---|
-| `overview:read` / `overview:write` | Overview templates admin page (`/admin/overview-templates`): list / edit. |
+| `overview:write` | Overview templates admin page (`/admin/overview-templates`): edit. |
 | `dashboard:read` / `dashboard:write` | Layer dashboard templates admin page: list / edit. |
 | `alarm-setup:read` / `alarm-setup:write` | Alarm Setup page: list / edit. |
 | `alarm-rule:read` / `alarm-rule:write` | Alarm Rule catalog: list / edit. |
@@ -48,7 +49,9 @@ Twenty-eight verbs grouped into areas:
 | Verb | Gates |
 |---|---|
 | `cluster:read` | Cluster Status page (`/operate/cluster`). |
-| `inspect:read` | Inspect page (`/admin/inspect`). |
+| `ttl:read` | Data Retention page (`/operate/ttl`). |
+| `config:read` | OAP Configuration page (`/operate/config`). |
+| `inspect:read` | Metrics Inspect page (`/operate/inspect`). |
 
 ### Admin surface
 
@@ -59,7 +62,7 @@ Twenty-eight verbs grouped into areas:
 | `role:read` | Roles & Permissions admin page (`/admin/roles`). |
 | `role:write` | Reserved. |
 | `auth:read` | Auth Status admin page (`/admin/auth-status`) + LDAP probe. |
-| `auditRead` | Reserved (audit log not yet exposed via API). |
+| `audit:read` | Reserved (audit log not yet exposed via API). |
 
 ### Special
 
@@ -90,7 +93,7 @@ Default definitions (used when `rbac.roles` is not overridden):
 Read-only data catalog. Deliberately limited — does not include `*:read` so a viewer cannot peek at rule definitions, live-debug sessions, setup screens, or platform internals.
 
 ```
-metrics:read, alarms:read, traces:read, logs:read, topology:read, profile:read
+metrics:read, alarms:read, traces:read, logs:read, topology:read, profile:read, overview:read
 ```
 
 ### `maintainer`
@@ -98,7 +101,7 @@ metrics:read, alarms:read, traces:read, logs:read, topology:read, profile:read
 Viewer + platform monitoring.
 
 ```
-viewer baseline + cluster:read, inspect:read
+viewer baseline + cluster:read, ttl:read, config:read, inspect:read
 ```
 
 ### `operator`
@@ -177,6 +180,7 @@ roles:
     - traces:read
     - logs:read
     - topology:read
+    - overview:read
     - inspect:read       # so they can browse the catalog
 landingByRole:
   on-call: /alarms       # land on the alarm board

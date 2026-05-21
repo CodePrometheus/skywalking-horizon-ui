@@ -1,145 +1,60 @@
 # Charts
 
-Horizon renders metrics through a small set of chart kinds. This page describes each kind, the inputs it accepts, and how it behaves. For the dashboard/overview widget types that select these charts, see [Dashboard Widgets](dashboard-widgets.md).
+Charts are the visual forms used by dashboard and overview widgets. Most users choose a widget type rather than a chart directly; this page helps template authors understand what each chart is good for.
 
-## Time chart
+## Time Chart
 
-**Used by:** `line` dashboard widget; ad-hoc embeds in feature pages.
+Used by `line` dashboard widgets.
 
-**Renders:** Multi-series line chart.
+Best for metrics that change over time: throughput, latency, error rate, queue depth, JVM memory, CPU, and similar series.
 
-### Props
+Behavior:
 
-| Prop | Type | Default | Notes |
-|---|---|---|---|
-| `series` | `Series[]` | required | One per line. |
-| `height` | number | 180 | Fixed pixel height. |
-| `unit` | string | — | Optional unit suffix in tooltips. |
-| `accent` | string | `var(--sw-accent)` | CSS var or hex for the first series. Subsequent series cycle through the palette. |
-| `format` | `int` \| `decimal` \| `compact` | — | Axis and tooltip number formatting. |
+- Supports one or more lines.
+- Shows a legend when there is more than one series.
+- Supports a second y-axis for mixed units, such as throughput and latency.
+- Shares hover position with other time charts on the same page, so operators can compare the same moment across panels.
 
-### `Series`
+Use `card` instead when the MQE expression returns a single scalar.
 
-```ts
-interface Series {
-  label: string;
-  data: Array<number | null>;
-  yAxisIndex?: number;   // 0 = left (default), 1 = right
-  unit?: string;
-}
-```
+## Top List
 
-### Behavior
+Used by `top` dashboard widgets.
 
-- Dual y-axis appears when any series has `yAxisIndex: 1`.
-- Legend visible iff `series.length > 1`.
-- Smooth lines with circle point markers.
-- Tooltip is positioned so it does not clip near grid edges.
-- **Synced crosshairs**: hovering broadcasts to peer time charts on the same page so they highlight the same time.
-- Data-only updates animate smoothly; structure changes (series count, label set) do a full replace.
+Best for ranked lists: slow endpoints, high-traffic services, worst error rates, busiest instances.
 
-## Top list
+Behavior:
 
-**Used by:** `top` dashboard widget.
+- Shows rank, name, value, and a proportional background bar.
+- Supports tabs when the widget has multiple ranking expressions.
+- Rows can navigate to an entity page when the result carries an entity reference.
 
-**Renders:** Sorted list with optional tab switcher.
+Use `line` instead when the expression returns a time series.
 
-### Props
+## Alarms Timeline
 
-| Prop | Type | Default | Notes |
-|---|---|---|---|
-| `items` | `ReadonlyArray<DashboardTopItem>` | — | Single list mode. |
-| `groups` | `ReadonlyArray<TopGroup>` | — | Multi-list mode (mutually exclusive with `items`). |
-| `unit` | string | — | Widget-level unit suffix. |
-| `color` | string | `var(--sw-accent)` | Bar color. |
+Used on the Alarms page.
 
-### `TopGroup`
+Best for triage during an incident. It buckets firing and recovered alarms over time and lets the operator select a time range for the alarm table below.
 
-```ts
-interface TopGroup {
-  label: string;
-  expression?: string;     // surfaced in tab tooltip
-  unit?: string;           // per-tab unit override
-  items: DashboardTopItem[];
-}
-```
+Behavior:
 
-### `DashboardTopItem`
-
-```ts
-interface DashboardTopItem {
-  name: string;
-  value: number | null;
-}
-```
-
-### Layout
-
-- Rank column (18 px) | name (flex) | value (auto).
-- Background fill bar normalized to the maximum value (per tab in multi-list mode).
-- Tabs shown when `groups.length > 1`.
-
-## Alarms timeline
-
-**Used by:** Alarms page (full timeline above the alarm table).
-
-**Renders:** Per-minute stacked bar chart of firing + recovered alarms, with brush selection.
-
-### Props
-
-| Prop | Type | Default | Notes |
-|---|---|---|---|
-| `alarms` | `AlarmMessage[]` | required | Alarm messages to bucket. |
-| `startTime` | number | required | Window start (ms). |
-| `endTime` | number | required | Window end (ms). |
-| `height` | number | 110 | Pixel height. |
-| `selectedRange` | `{ startTime, endTime } \| null` | null | Current brush selection. |
-
-### Emits
-
-| Event | Payload | When |
-|---|---|---|
-| `select-time-range` | `{ startTime, endTime }` | Brush completed or pin flag clicked. |
-| `clear-selection` | — | Empty area click or parent clears selection. |
-
-### Behavior
-
-- Two stacked series per minute bucket: firing (red), recovered (green).
-- Pin flags on non-zero buckets with count labels.
-- Brush (`lineX`) for range selection. Snaps to minute boundaries.
-- Click on non-zero point → selects that single minute. Click on zero → clears selection.
+- Shows firing and recovered alarms as stacked bars.
+- Clicking a busy minute narrows the alarm list to that minute.
+- Dragging a range narrows the alarm list to the selected window.
 
 ## Sparkline
 
-**Used by:** Inline tiles, sidebar mini-charts, layer service-list picker (when a column carries a trend).
+Used in compact places such as tiles, sidebars, and picker rows.
 
-**Renders:** Tiny inline trend line — lightweight enough to render dozens per page.
+Best for small trend hints where a full chart would be too heavy.
 
-### Props
+Behavior:
 
-| Prop | Type | Default | Notes |
-|---|---|---|---|
-| `values` | `Array<number \| null>` | required | Data points. `null` = gap. |
-| `width` | number | 56 | Internal coord width. |
-| `height` | number | 14 | Internal coord height. |
-| `color` | string | `var(--sw-accent)` | Line color. |
-| `stroke` | number | 1.25 | Line width (px). |
-| `fluid` | boolean | false | Stretch to container width. |
-| `crosshairBucket` | number \| null | null | Shared hover index (for synced sparklines). |
+- Renders a tiny trend line.
+- Shows a single dot when there is only one usable sample.
+- Shares hover position with related sparklines when the page supports it.
 
-### Emits
+## Colors
 
-| Event | Payload | When |
-|---|---|---|
-| `bucket-hover` | bucket index | Pointer over the chart. |
-| `bucket-leave` | — | Pointer leaves the chart. |
-
-### Behavior
-
-- Fallback single dot when fewer than 2 finite samples.
-- Gap bridging on `null` entries (line breaks).
-- No interactivity beyond hover broadcasting.
-
-## Theming
-
-Chart colors follow the active design theme. Per-chart accents default to the theme accent and update live when the theme is switched — no reload needed. Hex color strings are accepted for one-off cases (e.g. severity colors); prefer the theme accent for anything that should follow theming.
+Charts follow the active Horizon theme. Use the layer accent or the theme accent for normal metrics, and reserve explicit colors for semantic states such as severity or error.

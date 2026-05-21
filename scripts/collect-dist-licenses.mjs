@@ -58,6 +58,7 @@ import {
 } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -146,19 +147,35 @@ function collectPackages() {
 }
 
 // Human-asserted SPDX licenses for deps whose package.json omits or
-// mis-declares `license`. Verified against each package's own LICENSE file.
+// mis-declares `license`. Single source of truth is skywalking-eyes'
+// native `dependency.licenses` list in .licenserc.yaml — so the same
+// declaration drives both `license-eye dependency check` and this binary
+// LICENSE generator. Keyed by `name@version` (exact) and bare `name`
+// (any version); the exact key wins.
 const licenseOverrides = (() => {
-  const p = join(templatesDir, 'license-overrides.json');
-  if (!existsSync(p)) return {};
+  const exact = new Map();
+  const anyVersion = new Map();
+  const p = resolve(repoRoot, '.licenserc.yaml');
   try {
-    const { _comment, ...rest } = JSON.parse(readFileSync(p, 'utf8'));
-    void _comment;
-    return rest;
-  } catch (e) {
-    console.warn(`WARN: cannot parse ${p}: ${e.message}`);
-    return {};
+    const cfg = parseYaml(readFileSync(p, 'utf8'));
+    for (const e of cfg?.dependency?.licenses ?? []) {
+      if (!e?.name || !e?.license) continue;
+      if (e.version) exact.set(`${e.name}@${e.version}`, e.license);
+      else anyVersion.set(e.name, e.license);
+    }
+  } catch (err) {
+    console.warn(`WARN: cannot read dependency.licenses from ${p}: ${err.message}`);
   }
+  return { exact, anyVersion };
 })();
+
+function overrideFor(name, version) {
+  return (
+    licenseOverrides.exact.get(`${name}@${version}`) ??
+    licenseOverrides.anyVersion.get(name) ??
+    null
+  );
+}
 
 function normalizeLicense(pkgJson) {
   const lic = pkgJson.license;
@@ -210,7 +227,7 @@ const noticePieces = [];
 for (const pkg of packages) {
   const pj = readPkgJson(pkg.path);
   if (!pj) continue;
-  const license = licenseOverrides[`${pkg.name}@${pkg.version}`] ?? normalizeLicense(pj);
+  const license = overrideFor(pkg.name, pkg.version) ?? normalizeLicense(pj);
   const homepage = pj.homepage || pj.repository?.url || pj.repository || '';
   const entry = {
     name: pkg.name,

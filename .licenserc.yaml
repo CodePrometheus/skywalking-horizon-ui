@@ -68,3 +68,13 @@ dependency:
   excludes:
     - name: '@skywalking-horizon-ui/*' # Self workspace packages
       recursive: true
+  # Human-asserted licenses for bundled deps whose package.json omits or
+  # mis-declares `license`. This is skywalking-eyes' native unknown-license
+  # mechanism; it is ALSO consumed by scripts/collect-dist-licenses.mjs when
+  # it builds the binary tarball's LICENSE. Each entry MUST be verified
+  # against the package's own LICENSE/COPYING file (reproduced under
+  # dist/licenses/) before being added.
+  licenses:
+    - name: vue-grid-layout
+      version: 3.0.0-beta1
+      license: MIT # ships an MIT LICENSE file; package.json omits `license`

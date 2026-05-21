@@ -1,6 +1,6 @@
 # Overview Widgets
 
-Six widget types render on overview pages. Each is a single Vue component with a tightly scoped prop interface; the renderer (`apps/ui/src/render/overview/OverviewDashboardView.vue`) branches on `widget.type` and passes the relevant fields.
+Six widget types render on overview pages. Each `widget.type` you set in a template selects one of them, and reads its own set of fields.
 
 ## Grid context (recap)
 
@@ -11,7 +11,6 @@ Six widget types render on overview pages. Each is a single Vue component with a
 
 ## `metric`
 
-**Component:** `MetricWidget.vue`
 **Renders:** Single scalar with optional unit. Used for headline KPIs on overviews.
 
 ### Fields
@@ -30,7 +29,7 @@ Six widget types render on overview pages. Each is a single Vue component with a
 
 ### Behavior
 
-Value formatting via `formatValue()` (`render/widgets/ValueFormat.ts`):
+Values are formatted compactly:
 
 - M / k suffixes for large numbers (1.2M, 3.4k).
 - Two decimal places for fractional values.
@@ -54,7 +53,6 @@ Value formatting via `formatValue()` (`render/widgets/ValueFormat.ts`):
 
 ## `kpi-tile`
 
-**Component:** `KpiTileWidget.vue`
 **Renders:** Compound tile — optional service-count header row plus N KPI rows. Each KPI row is either a number readout or a progress bar.
 
 ### Fields
@@ -79,7 +77,7 @@ Value formatting via `formatValue()` (`render/widgets/ValueFormat.ts`):
 
 ### Behavior
 
-- `style: number` — value formatted via `formatValue()`, right-aligned.
+- `style: number` — value formatted compactly, right-aligned.
 - `style: progress-bar` — fill ratio = `value / max`. Color follows the layer accent.
 - `showCount` row clickable; KPI rows are not (the whole tile is the unit of action).
 
@@ -103,7 +101,6 @@ Value formatting via `formatValue()` (`render/widgets/ValueFormat.ts`):
 
 ## `metric-composite`
 
-**Component:** `MetricCompositeWidget.vue`
 **Renders:** Mixed KPI layout — number-style KPIs go into auto-fit count tiles; progress-bar-style (or `unit: '%'`) KPIs go into the bar grid. One widget can carry both shapes.
 
 This is the unified replacement for the old per-feature widgets (`k8s-service-count`, `pilot`, `service-count`). Anything compound now goes through `metric-composite`.
@@ -113,7 +110,7 @@ This is the unified replacement for the old per-feature widgets (`k8s-service-co
 | Field | Type | Notes |
 |---|---|---|
 | `id`, `title`, `tip`, `layer`, `span`, `rowSpan` | — | Common. |
-| `kpis` | `OverviewKpi[]` | Auto-split by the renderer. |
+| `kpis` | `OverviewKpi[]` | Auto-split between count tiles and the bar grid (see below). |
 
 ### Layout
 
@@ -152,7 +149,6 @@ Otherwise it lands in the count tiles. This lets you author a Kubernetes-style s
 
 ## `alarms`
 
-**Component:** `AlarmsWidget.vue`
 **Renders:** Active-incident rail. Top-N rows of the most recent firing alarms in the last 60 minutes, plus a total count chip.
 
 ### Fields
@@ -165,7 +161,7 @@ Otherwise it lands in the count tiles. This lets you author a Kubernetes-style s
 
 ### Behavior
 
-- Fetches via `bff.alarms.list()` (60-minute window, server-resolved).
+- Fetches the most recent firing alarms over a 60-minute, server-resolved window.
 - **Dual-mode fetch:**
   - **Modern** (`queryAlarms` capability present): server-side layer filter, server-side time window.
   - **Legacy** (`getAlarm` only): all-layers fetch, client-side layer filter.
@@ -188,7 +184,6 @@ Otherwise it lands in the count tiles. This lets you author a Kubernetes-style s
 
 ## `topology`
 
-**Component:** (renders a topology snapshot via the shared topology component)
 **Renders:** Service-map for the configured layer. Static snapshot of the current window — the full Topology tab on a per-layer page is interactive; the overview widget is a glanceable view.
 
 ### Fields
@@ -214,7 +209,6 @@ No MQE — uses the layer's topology metric from the layer template (`topology.m
 
 ## `section-break`
 
-**Component:** `SectionBreak.vue`
 **Renders:** Visual row header with horizontal rules. No data fetch.
 
 ### Fields

@@ -5,15 +5,15 @@ Horizon enforces access at the BFF on every HTTP request. The UI hides controls 
 ## Model
 
 - **Subject**: an authenticated session (`username + roles`).
-- **Object**: an HTTP route.
-- **Action (verb)**: a dot-namespaced string declared by the route policy table.
-- **Decision**: granted iff any of the user's roles has a grant that matches the route's required verb.
+- **Object**: a protected request.
+- **Action (verb)**: a dot-namespaced string each protected request requires.
+- **Decision**: granted if any of the user's roles holds a grant that matches the required verb.
 
-Sessions capture the **role list** at login time. Verbs are computed per request from `session.roles → rbac.roles → grants`. Hot-reloading role definitions takes effect on the next route check; hot-reloading group mappings or local user roles requires the user to re-login (since sessions hold their original role list).
+Sessions capture the **role list** at login time, and the verbs they grant are resolved from the current `rbac.roles` definitions on each request. Hot-reloading role definitions takes effect immediately; hot-reloading group mappings or local user roles requires the user to re-login (since sessions hold their original role list).
 
 ## Verb vocabulary
 
-Source: `apps/bff/src/rbac/verbs.ts`. Twenty-eight verbs grouped into areas:
+Twenty-eight verbs grouped into areas:
 
 ### Data reads (the public catalog)
 
@@ -70,7 +70,7 @@ Source: `apps/bff/src/rbac/verbs.ts`. Twenty-eight verbs grouped into areas:
 
 ## Grant matching
 
-A user's grant string is matched against a required verb using these rules (`verbs.ts`):
+A user's grant string is matched against a required verb using these rules:
 
 | Grant pattern | Matches |
 |---|---|
@@ -132,7 +132,7 @@ A user with no role gets no verbs. The session is created (login succeeds) but e
 
 ## Landing route per role
 
-After login, the BFF returns a `landingRoute` from `rbac.landingByRole`. The UI router uses it as the post-login destination unless `?redirect=` overrides (set when the user was bounced to login from a protected route — they return to where they came from).
+After login, the user lands on the route configured for their role in `rbac.landingByRole` — unless they were bounced to login from a protected route, in which case they return to where they came from.
 
 Default mapping:
 
@@ -148,35 +148,9 @@ When a user has multiple roles, the **first role on the user** wins. Order matte
 
 ## Enforcement
 
-Source: `apps/bff/src/rbac/route-policy.ts`, `apps/bff/src/rbac/policy.ts`, `apps/bff/src/user/middleware.ts`.
+Access is enforced server-side, not in the browser. Every protected request is checked for a valid session (an unauthenticated request is rejected with `401`) and then for the verb that request requires (a session lacking the verb is rejected with `403`). The UI hides controls a session cannot use, but a forged UI cannot bypass these checks.
 
-The BFF builds a route → required-verb table at startup. Every Fastify route is gated by:
-
-1. `requireAuth()` — looks up the session cookie, returns 401 on missing / expired.
-2. `checkVerb(verb)` — looks up the session's effective verbs, returns 403 on mismatch.
-
-Routes without an explicit policy entry default to `'auth'` (session required, no specific verb) **with a warning at startup**. This is fail-safe: a forgotten route does not become accidentally public.
-
-### Policy values
-
-| Policy | Meaning |
-|---|---|
-| `'public'` | No auth required. Login, logout, health-check endpoints. |
-| `'auth'` | Session required; no verb check. Identity-only routes. |
-| `'<verb>'` | Session required + verb check. Most application routes. |
-
-### Example policy entries
-
-```ts
-'POST /api/auth/login':              'public',
-'POST /api/auth/logout':             'public',
-'GET /api/auth/me':                  'auth',
-'GET /api/oap/info':                 'auth',
-'POST /api/layer/:key/dashboard':    'metrics:read',
-'GET /api/rule':                     'rule:read',
-'POST /api/rule/addOrUpdate':        'rule:write',
-'POST /api/admin/auth-status/probe': 'auth:read',
-```
+Enforcement is fail-safe: a request with no explicit verb still requires a valid session, so a misconfiguration cannot accidentally expose a protected endpoint to anonymous callers.
 
 ## Disabling RBAC for dev
 

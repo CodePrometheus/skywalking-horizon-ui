@@ -210,7 +210,7 @@ The bulk of the template. A map from scope to an ordered widget array.
 
 ### Scope resolution
 
-`apps/bff/src/logic/layers/loader.ts:widgetsForScope()` resolves in this order:
+Widgets for a scope resolve in this order:
 
 ```
 dashboards[scope] → dashboards.service → template.widgets (legacy)

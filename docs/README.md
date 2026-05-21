@@ -16,16 +16,7 @@ The sidebar on the left of this site is the canonical entry point — every sect
 
 ## Quick orientation
 
-The UI is a pnpm monorepo:
-
-| App / package | Purpose |
-|---|---|
-| `apps/ui/` | Vue 3 + Vite single-page app. |
-| `apps/bff/` | Fastify-based Backend For Frontend. The single place that talks to OAP — query GraphQL + admin REST + Zipkin. |
-| `packages/api-client/` | TypeScript types shared between BFF and UI. |
-| `packages/design-tokens/` | CSS custom properties shipped to both apps (the 5 bundled themes live here). |
-
-The UI **only** talks to the BFF; the BFF is the single place that talks to OAP. Every OAP-side requirement is enforced once, in the BFF, not scattered through the UI.
+Horizon runs as two pieces: a Vue single-page app (the UI) and a Backend For Frontend (the BFF). The UI **only** talks to the BFF; the BFF is the single place that talks to OAP — query GraphQL, admin REST, and Zipkin. Every OAP-side requirement is enforced once, in the BFF, not scattered through the UI.
 
 ## Where to start, by role
 

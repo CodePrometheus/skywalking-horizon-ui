@@ -1,6 +1,6 @@
 # Dashboard Widgets
 
-Four widget types render on per-layer dashboards. The renderer (`apps/ui/src/render/layer-dashboard/LayerDashboardsView.vue`) branches on `widget.type` and delegates to a small component per kind.
+Four widget types render on per-layer dashboards. Each `widget.type` you set in a template selects one of them.
 
 ## Grid context
 
@@ -70,7 +70,7 @@ A `line` widget with a scalar-shaped MQE renders a one-point chart, which is mis
 
 ## `line`
 
-**Renders:** Multi-series line chart via the `TimeChart` component (ECharts wrapper).
+**Renders:** Multi-series line chart.
 
 ### Multi-series
 
@@ -115,9 +115,9 @@ When any series has `yAxisIndex: 1`, the right axis appears. Use for mixed-unit 
 
 - Smooth lines with circle markers.
 - Legend visible when more than one series; hidden for single series.
-- Tooltip positioned via callback (appendToBody) so it does not clip near grid edges.
+- Tooltip is positioned so it does not clip near grid edges.
 - **Synced crosshairs**: pointing at a time on this chart highlights the same time on every other `line` chart on the page.
-- Fingerprinting: data-only updates (same structure, new values) animate smoothly. Structure changes do a full replace.
+- Data-only updates (same structure, new values) animate smoothly. Structure changes do a full replace.
 
 ### When `line` is wrong
 
@@ -188,7 +188,7 @@ The data source returns a record set (rows × typed columns) rather than a numer
 ### Behavior
 
 - Renders as a dense table with column headers from the record's typed fields.
-- Sort, filter, pagination handled in the component.
+- Supports sort, filter, and pagination.
 
 ## Visibility predicates
 
@@ -229,6 +229,6 @@ The widget editor (planned) will warn on type / MQE mismatches. The schema does 
 
 ## Per-scope widget sets
 
-The `dashboards.<scope>` map on a layer template lets you define different widget grids for service / instance / endpoint / topology / trace / logs / profiling pages. Scope resolution falls back to `service` if a specific scope is unset (`apps/bff/src/logic/layers/loader.ts:widgetsForScope()`).
+The `dashboards.<scope>` map on a layer template lets you define different widget grids for service / instance / endpoint / topology / trace / logs / profiling pages. If a specific scope is unset, it falls back to the `service` scope.
 
 See [Customization → Layer Dashboard Templates](../customization/layer-templates.md) for the per-scope structure.

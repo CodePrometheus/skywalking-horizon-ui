@@ -32,13 +32,13 @@ See [Components → Overview Widgets](components/overview-widgets.md) and [Dashb
 
 ### War-room overview support
 
-The overview perspective is a first-class concept. An overview template (`apps/bff/src/bundled_templates/overviews/*.json`) is an ordered list of widgets laid out on a 12-column grid with per-section column overrides. Bundled examples include `services.json` (cross-layer service health + Kubernetes capacity) and `mesh.json` (Istio data-plane services + pilot activity).
+The overview perspective is a first-class concept. An overview template is an ordered list of widgets laid out on a 12-column grid with per-section column overrides. Bundled examples include `services.json` (cross-layer service health + Kubernetes capacity) and `mesh.json` (Istio data-plane services + pilot activity).
 
 Overviews are scoped per-layer (each widget declares its `layer` key, allowing MQE evaluation against the right entity scope), or layer-agnostic for cross-cutting summaries.
 
 ### Integrated trace, log, metric, profiling
 
-The per-layer drill-down (`layer/<key>/` route family) presents a single service through every data type SkyWalking captures:
+The per-layer drill-down presents a single service through every data type SkyWalking captures:
 
 | Tab | Scope | Data source |
 |---|---|---|
@@ -54,7 +54,7 @@ The renderer is template-driven (see [Customization → Layer Dashboard Template
 
 Every visual decision a site operator wants to make is template-driven:
 
-- **Sidebar layer order** — `useLandingOrder` reads per-user priority from the setup store.
+- **Sidebar layer order** — per-user layer priority, persisted in the setup state file.
 - **Layer alias / color / group / visibility** — layer template fields (`alias`, `color`, `group`, `visibility`).
 - **Which tabs appear on a layer** — `components` flags on the layer template.
 - **What appears under each tab** — `dashboards.<scope>` widget arrays.

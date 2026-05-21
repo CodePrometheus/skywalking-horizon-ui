@@ -22,7 +22,7 @@ Holds:
 - Layer-level setup state (which layers the user has marked as enabled / disabled in their sidebar).
 - Other persistent UI preferences that survive sessions.
 
-Read and written by `apps/bff/src/logic/setup/store.ts`. The UI writes via `POST /api/setup`; the file is updated atomically (write-temp-then-rename).
+The UI writes this file as users change their landing order and layer enablement; the file is updated atomically (write-temp-then-rename).
 
 ## `alarms.file`
 
@@ -30,13 +30,13 @@ Read and written by `apps/bff/src/logic/setup/store.ts`. The UI writes via `POST
 |---|---|---|---|---|
 | `alarms.file` | string | `./horizon-alarms.json` | no | Filesystem path to the alarm rules state. |
 
-Holds user-created alarm rules (in addition to whatever the OAP cluster ships bundled). Read and written by `apps/bff/src/logic/alarms/store.ts`. The Alarm Rule Editor (Operate → Alarm Rules) writes here.
+Holds user-created alarm rules (in addition to whatever the OAP cluster ships bundled). The Alarm Rule Editor (Operate → Alarm Rules) writes here.
 
 ## Env-var fallbacks
 
-When `horizon.yaml` does not supply a `setup.file` or `alarms.file` (or `audit.file` / `debugLog.file`), the config schema seeds its default from an env var:
+When `horizon.yaml` does not supply a `setup.file` or `alarms.file` (or `audit.file` / `debugLog.file`), the default is seeded from an env var:
 
-| YAML key | Env-var fallback | Schema baseline |
+| YAML key | Env-var fallback | Default |
 |---|---|---|
 | `setup.file` | `HORIZON_SETUP_FILE` | `./horizon-setup.json` |
 | `alarms.file` | `HORIZON_ALARMS_FILE` | `./horizon-alarms.json` |

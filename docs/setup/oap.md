@@ -17,7 +17,7 @@ oap:
 
 | Field | Type | Default | Required | Notes |
 |---|---|---|---|---|
-| `queryUrl` | URL string | `http://127.0.0.1:12800` | no | OAP GraphQL query endpoint. Load-balanceable — any OAP node answers. Used by all read pages. Validated via Zod `.url()`. |
+| `queryUrl` | URL string | `http://127.0.0.1:12800` | no | OAP GraphQL query endpoint. Load-balanceable — any OAP node answers. Used by all read pages. Must be a valid URL. |
 | `adminUrl` | URL string | `http://127.0.0.1:17128` | no | OAP admin REST endpoint. Hosts runtime-rule, dsl-debugging, inspect, status, debugging/config endpoints. Single URL; OAP handles cluster-internal fan-out. |
 | `zipkinUrl` | URL string | `http://127.0.0.1:9412/zipkin` | no | Zipkin v2 REST endpoint. Used when a layer's `traces.source` is `zipkin` or `both`. Defaults assume the standalone Armeria binding; for Docker / shared-port deployments use `<queryUrl>/zipkin`. |
 | `timeoutMs` | number | `15000` | no | Per-request HTTP timeout (milliseconds) for all OAP calls. Applies to query, admin, Zipkin. Must be positive integer. |
@@ -67,7 +67,7 @@ The cache is per-process. After a BFF restart, the next request re-probes.
 
 ## Hot reload
 
-Changes to any `oap.*` field are picked up by listeners on the config watcher. The next outbound call uses the new value. **Exception**: capability cache is process-lifetime — flipping a feature on OAP that requires re-introspection needs a BFF restart.
+Changes to any `oap.*` field are picked up on file change. The next outbound call uses the new value. **Exception**: capability cache is process-lifetime — flipping a feature on OAP that requires re-introspection needs a BFF restart.
 
 ## Common mistakes
 

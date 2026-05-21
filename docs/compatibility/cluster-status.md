@@ -6,8 +6,6 @@ This page is intentionally two-pane: a healthy `:12800` with broken `:17128` is 
 
 ## Pane A — Query / GraphQL port (`:12800`)
 
-**Source:** `apps/bff/src/http/query/info.ts`, UI composable `apps/ui/src/shell/useOapInfo.ts`.
-
 **Single GraphQL call** fired every 30 seconds:
 
 ```graphql
@@ -40,8 +38,6 @@ query {
 - Refetch interval: 30 s
 
 ## Pane B — Admin host (`:17128`)
-
-**Source:** `apps/bff/src/http/query/preflight.ts`, UI composable `apps/ui/src/shell/useAdminFeatures.ts`.
 
 **Single admin REST call** fired every 60 seconds:
 
@@ -86,7 +82,7 @@ The sequence is fail-fast: once `admin-server` itself is off, the dump is empty 
 
 In addition to the two health panes, the page lists OAP cluster members:
 
-- **Source**: `GET <queryUrl>/status/cluster/nodes` (status client, `packages/api-client/src/status.ts`).
+- **Source**: `GET <queryUrl>/status/cluster/nodes`.
 - **Returns**: per-node host, port, role, heartbeat.
 - **Use**: confirm cluster size matches expectations (e.g., 3-node OAP behind one DNS name should show three rows).
 

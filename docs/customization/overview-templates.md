@@ -36,7 +36,7 @@ Bundled templates: `apps/bff/src/bundled_templates/overviews/<id>.json`. Example
 | `title` | string | **required** | Display title in the sidebar and page header. |
 | `description` | string | — | One-line description shown under the title. |
 | `visibility` | `public` \| `operate` | `public` | Sidebar placement. `operate` puts the overview under the Operate group (admin-only by convention). |
-| `icon` | string | — | Sidebar icon name (from the icon set in `apps/ui/src/assets/icons/`). |
+| `icon` | string | — | Sidebar icon name (from Horizon's icon set). |
 | `order` | number | — | Sort order within the visibility bucket (lower = earlier). |
 | `layers` | string[] | — | Layer enums this overview aggregates. Optional — used as a hint by the sidebar and by widgets that want a default layer for MQE evaluation. |
 | `widgets` | array | **required** | Ordered widget list. The renderer iterates and lays out per the grid model. |
@@ -58,7 +58,7 @@ See [Components → Overview Widgets](../components/overview-widgets.md) for the
 
 ## Grid model
 
-The renderer (`apps/ui/src/render/overview/OverviewDashboardView.vue`) uses a CSS grid:
+The overview renders on a CSS grid:
 
 - Per-section column count, default 12, set by the most recent `section-break.cols`.
 - Fixed row height 72 px.

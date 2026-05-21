@@ -1,6 +1,6 @@
 # horizon.yaml Reference
 
-`horizon.yaml` is the single configuration file for the Horizon BFF. The schema is enforced by Zod (`apps/bff/src/config/schema.ts`); validation runs at startup and again on every hot reload. A file that fails validation is **rejected**; the BFF keeps the previously valid config rather than serving with broken settings.
+`horizon.yaml` is the single configuration file for the Horizon BFF. Validation runs at startup and again on every hot reload. A file that fails validation is **rejected**; the BFF keeps the previously valid config rather than serving with broken settings.
 
 This page is the top-level map. Each subsection has its own detail page:
 
@@ -81,7 +81,7 @@ There is no "default admin/admin" fallback.
 
 ## Hot reload behavior
 
-The watcher (`apps/bff/src/config/loader.ts`) re-parses on file change. Listeners registered via `config.onChange()` get the new values:
+The config is re-read on file change and the new values take effect without a restart:
 
 - Auth backend selection (re-evaluated on next login).
 - RBAC roles and policy (re-evaluated on next route call).

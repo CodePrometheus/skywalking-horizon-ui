@@ -30,7 +30,7 @@ The block is **optional** — leave it out (or commented) to disable break-glass
 Break-glass is honored at login **only when both** are true:
 
 1. `auth.backend: ldap` (the block is unused in local mode — a startup warning is logged if both are present).
-2. `ldapHealth.isUnhealthy()` returns true at the moment of login. The probe runs continuously; "unhealthy" means the last probe (TCP / bind / search) failed.
+2. The directory is unreachable at the moment of login. Horizon probes the directory continuously; "unhealthy" means the most recent probe (connect / bind / search) failed.
 
 When activated:
 
@@ -43,10 +43,8 @@ When LDAP is healthy again, the break-glass username is rejected at login — ev
 
 ## Verification
 
-`apps/bff/src/user/break-glass.ts`:
-
-- Same Argon2id verifier as the local backend.
-- **Timing-safe** — a wrong username still incurs the argon2 cost (verify against a dummy hash) to prevent leaking which break-glass username is configured via timing.
+- The password is checked with the same Argon2id verification as the local backend.
+- **Timing-safe** — a wrong username still incurs the full argon2 cost, so an attacker cannot learn the configured break-glass username from response timing.
 
 ## Audit
 

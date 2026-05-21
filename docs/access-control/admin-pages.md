@@ -5,7 +5,6 @@ Three pages under `/admin/` surface authentication, user, and RBAC state for liv
 ## Login page
 
 **Path:** `/login`
-**File:** `apps/ui/src/features/auth/LoginView.vue`
 
 The redesigned login page:
 
@@ -14,23 +13,18 @@ The redesigned login page:
 - **Inline auth-status pill** that adapts to the active backend:
   - Green: local backend, **or** LDAP backend with the directory reachable.
   - Red: LDAP backend with directory unreachable (warns that break-glass may be armed).
-- Backend health is polled every 5 seconds via `GET /api/auth/health`.
+- Backend health is polled continuously so the pill reflects directory outages in near real time.
 - Form fields: username, password. Submit is disabled while in flight.
 - Apache copyright footer with auto-current year.
 
-After successful login, the UI redirects to:
-
-1. `?redirect=<path>` if the user was bounced from a protected route, **or**
-2. `landingByRole[<first role>]` (see [RBAC](rbac.md)).
+After successful login, the UI redirects to the page the user was bounced from (if they hit login from a protected route), otherwise to the landing route for their role (see [RBAC](rbac.md)).
 
 ## Auth Status
 
 **Path:** `/admin/auth-status`
 **Verb:** `auth:read` (maintainer, admin)
-**File:** `apps/ui/src/features/admin/auth-status/AuthStatusView.vue`
-**Endpoints:** `GET /api/admin/auth-status` (30 s auto-refresh), `POST /api/admin/auth-status/probe`
 
-The single pane for "is my auth wiring correct?" Shows:
+Auto-refreshes every 30 seconds. The single pane for "is my auth wiring correct?" Shows:
 
 | Section | Content |
 |---|---|
@@ -39,13 +33,13 @@ The single pane for "is my auth wiring correct?" Shows:
 | Local users | Count of `auth.local.users` entries (zero in LDAP mode). |
 | LDAP probe | Reachability, service-bind success, user-search success, latency, last error. |
 | Group-to-role mappings | The full `groupMappings` table from `horizon.yaml`. |
-| Active sessions | Count from the in-memory session map. |
+| Active sessions | Count of currently open sessions. |
 | Break-glass | Configured? Armed (LDAP unhealthy)? Username (hash not shown). |
 | RBAC policy snapshot | All role names, all known verbs. |
 
 ### Live probe
 
-A manual **Probe now** button fires `POST /api/admin/auth-status/probe` for an immediate refresh (does not wait for the 30 s tick).
+A manual **Probe now** button triggers an immediate refresh (does not wait for the 30 s tick).
 
 ### Username resolver
 
@@ -60,14 +54,12 @@ No login required for the resolution — useful for "if Alice tried to log in ri
 
 **Path:** `/admin/users`
 **Verb:** `user:read` (admin)
-**File:** `apps/ui/src/features/admin/users/UsersAdminView.vue`
-**Endpoint:** `GET /api/admin/users` (15 s auto-refresh)
 
-Lists users known to this BFF instance. Three sources merged:
+Auto-refreshes every 15 seconds. Lists users known to this BFF instance, drawn from three sources:
 
-1. **LDAP users**: from the in-memory seen-cache (anyone who successfully logged in via LDAP on this BFF since startup).
-2. **Local users**: static entries from `auth.local.users` in `horizon.yaml`.
-3. **Break-glass logins**: seen-cache entries marked `source: break-glass`.
+- **LDAP users**: anyone who successfully logged in via LDAP on this BFF since startup.
+- **Local users**: static entries from `auth.local.users` in `horizon.yaml`.
+- **Break-glass logins**: prior break-glass sessions seen on this BFF.
 
 Per-row:
 
@@ -89,14 +81,12 @@ Per-row:
 
 ### Operations
 
-The Users page is **read-only**. To add a local user, edit `horizon.yaml`. To remove an LDAP user, do so in the directory; the seen-cache entry persists until BFF restart but is informational only.
+The Users page is **read-only**. To add a local user, edit `horizon.yaml`. To remove an LDAP user, do so in the directory; the row persists until BFF restart but is informational only.
 
 ## Roles & Permissions
 
 **Path:** `/admin/roles`
 **Verb:** `role:read` (admin)
-**File:** `apps/ui/src/features/admin/roles/RolesView.vue`
-**Endpoint:** `GET /api/admin/auth-status` (shared with the Auth Status page; reads the `rbac` block)
 
 Renders a read-only board of roles × verbs as a check-mark grid. The intent is to answer "what can role X do?" without having to re-derive it from `horizon.yaml`.
 

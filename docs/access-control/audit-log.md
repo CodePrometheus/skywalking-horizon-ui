@@ -4,7 +4,7 @@ The audit log records sensitive operations as JSON Lines, one event per line, ap
 
 ## Event schema
 
-Source: `apps/bff/src/audit/logger.ts`.
+Each event has these fields:
 
 ```ts
 interface AuditEvent {
@@ -107,7 +107,7 @@ The recorded set evolves with the codebase. As of the current build:
 ## File format
 
 - **JSON Lines.** One JSON object per line, `\n`-terminated.
-- **Append-only.** The BFF opens the file in append mode and never truncates / rotates.
+- **Append-only.** The file is only ever appended to — never truncated or rotated.
 - **No rotation built in.** Pair with `logrotate`, `vector`, `fluent-bit`, or a sidecar shipper.
 
 ## Storage placement
@@ -124,11 +124,11 @@ The recorded set evolves with the codebase. As of the current build:
 
 ## In-memory "seen cache"
 
-In addition to the on-disk audit log, the BFF maintains an in-memory `UserSeenCache` of successful logins:
+In addition to the on-disk audit log, the BFF keeps an in-memory record of recent successful logins:
 
 - Records: username, source (`local` / `ldap` / `break-glass`), roles, last-seen timestamp, last IP.
 - Reset on BFF restart.
-- Exposed via `GET /api/admin/users` and visible on the Users admin page.
+- Visible on the Users admin page.
 
 This is a UX convenience — it lets the Users page show "who has logged in to this BFF instance recently" without parsing the audit log. For historical / cluster-wide analysis, parse the JSONL file directly.
 

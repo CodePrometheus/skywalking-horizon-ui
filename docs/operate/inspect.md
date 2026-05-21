@@ -88,22 +88,6 @@ Horizon converts the page's chosen time range into the correct format automatica
 
 OAP does not expose a direct "metrics in layer X" filter. Workaround: most layers have a metric-name prefix (`service_*` for GENERAL, `mesh_service_*` for MESH, `k8s_*` for K8S). Filter the regex by that prefix.
 
-## Data path
-
-```
-Browser
-  ↓ GET /api/inspect/metrics?regex=...
-BFF (apps/bff/src/http/admin/inspect.ts)
-  ↓ GET <adminUrl>/inspect/metrics?regex=...
-OAP :17128
-  ↓ inspect module returns catalog rows
-BFF wraps as typed response
-  ↓
-Browser renders virtualized list
-```
-
-The BFF is a thin proxy — caching is per-request, not cross-request. The Inspect API is fast enough that this is rarely a bottleneck.
-
 ## Limits and caveats
 
 - **404 from OAP** means the `inspect` module is off. Set `SW_INSPECT=default` on OAP and restart it. The Cluster Status page will then show the module green.

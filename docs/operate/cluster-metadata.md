@@ -54,7 +54,7 @@ Two **independent** panes, refreshed in parallel.
 
 ## Cluster members
 
-- **Source:** `GET <queryUrl>/status/cluster/nodes` (status client, `packages/api-client/src/status.ts`).
+- **Source:** `GET <queryUrl>/status/cluster/nodes`.
 - **Returns:** per-node host, port, role, last heartbeat.
 - **Refresh:** Same cadence as the Query pane.
 

@@ -28,20 +28,16 @@ auth:
 
 Bootstrap rule: `ldap.groupMappings` must be non-empty before LDAP users can sign in. The BFF boots and surfaces the setup-required state on the login page, but no LDAP login succeeds until at least one mapping is configured.
 
-## Login flow
+## How sign-in works
 
-`apps/bff/src/user/ldap.ts`:
+Horizon never stores or reads stored passwords. A sign-in attempt authenticates **as the user** against the directory with the typed password, so the directory itself decides whether the password is valid. On success, Horizon reads the user's group memberships and maps them to roles via `groupMappings`.
 
-1. **Service bind** (if `bindDn` is set) or anonymous bind. Used to search for the user's DN.
-2. **User search** — apply `userFilter` against `userBaseDn`, substituting `{username}` (RFC 4515 escaped). Expect exactly one result; multiple matches abort with `null`.
-3. **User bind** — bind directly as the discovered DN with the typed password. A successful bind proves the password.
-4. **Group resolution** — per `groupStrategy`:
-   - `memberOf`: read the `memberOf` attribute from the user entry (AD-style).
-   - `search`: search `groupBaseDn` for groups whose `memberAttr` contains the user's DN (OpenLDAP-style).
-5. **Group → role mapping** — walk `groupMappings` in order. **First match wins per mapping** (a user matching multiple mappings gets the union of their roles).
-6. Return `{ username, roles }` on success, `null` on any failure.
+What this means when you configure LDAP:
 
-A failure at any step returns `null` — the UI shows a generic "Invalid credentials" message. No information leak about which step failed.
+- **Group membership is read with the service account** (`bindDn`), not the user's own credentials. Many directories deny ordinary users read access to the group subtree, so the **service account must be able to see groups** — otherwise every user falls back to the `*` role.
+- **`userFilter` must resolve to a single user.** If it matches more than one entry, the first match is used.
+- **Roles are the union of all matching `groupMappings`** — a user in two mapped groups gets both roles' permissions.
+- **Failures are deliberately indistinguishable.** A wrong password, a missing user, or no matching group all surface the same "Invalid credentials" message; the specific cause is never revealed to the browser.
 
 ## Field reference
 
@@ -64,7 +60,7 @@ See [`auth`](../setup/auth.md) for the field table.
 | Strategy | When to use |
 |---|---|
 | `memberOf` | Active Directory and most modern OpenLDAP deployments. User entries carry a `memberOf` multi-valued attribute. Faster (single read, no second search). |
-| `search` | OpenLDAP deployments where users do not carry `memberOf`. Requires `groupBaseDn` and uses `memberAttr` (usually `member` or `uniqueMember`). |
+| `search` | OpenLDAP deployments where users do not carry `memberOf`. Requires `groupBaseDn` and uses `memberAttr` (usually `member` or `uniqueMember`). The **service account** (`bindDn`) — not the logging-in user — performs this search, so it must have read access to the group subtree. |
 
 When unsure, try `memberOf` first; if a successful user bind returns no groups, switch to `search`.
 
@@ -83,21 +79,11 @@ groupMappings:
 - A user matching multiple groups gets the **union** of all matching roles. E.g., a user in both `cn=sre` and `cn=platform` ends up with `operator` and `maintainer` roles (effective verbs are the union of both role's grants).
 - Order matters only in the sense of being listed; all matching entries contribute.
 
-## Health probing
+## Health and directory reachability
 
-The BFF exposes `GET /api/auth/health` (polled by the login page every 5 seconds):
+The login page continuously reflects whether the directory is reachable, so operators see an outage before a user reports a failed login. When the directory is unreachable, that state is also what arms [Break-Glass Access](break-glass.md).
 
-- `local`: backend is local — returns `reachable: true` unconditionally.
-- `ldap reachable`: last LDAP probe succeeded.
-- `ldap unreachable`: last probe failed.
-
-The health probe runs:
-
-1. TCP / TLS connect to `ldap.url`.
-2. Service bind (or anonymous bind).
-3. (Optional username resolver) A test search for a known username when invoked from the admin Auth Status page.
-
-Probe failure is the trigger condition for [Break-Glass Access](break-glass.md).
+The admin **Auth Status** page lets you confirm the connection (and the service bind) and test a username against the live directory — it shows the groups returned and the roles those groups resolve to, without the user needing to sign in. Use it to debug `groupMappings` and to verify the service account can read the group subtree.
 
 ## TLS
 
@@ -124,5 +110,6 @@ OAP does **not** see Horizon's LDAP credentials. The user authenticates against 
 
 - **Service bind fails silently.** Wrong `bindDn` or `bindPassword` causes all logins to fail with a generic message. Verify by looking at LDAP server logs.
 - **`groupStrategy: memberOf` on a directory that doesn't populate it.** Logins succeed but every user gets only the `"*"` fallback role. Switch to `search`.
+- **`search` strategy with a locked-down group subtree.** Group resolution runs on the service account (`bindDn`), so grant *that* account read access to `groupBaseDn`. (The logging-in user does not need it — Horizon never uses the user's own bind for group lookup.)
 - **Forgetting the `"*"` fallback.** A user who authenticates but matches no group mapping is rejected — change to `null` and the UI shows "Invalid credentials". Add `"*" → viewer` for graceful degradation.
 - **`tlsInsecure: true` in production.** A man-in-the-middle on the LDAP connection can capture every typed password. Use proper certificates instead.

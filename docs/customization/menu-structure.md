@@ -10,24 +10,12 @@ This page documents how those three combine into the live sidebar.
 
 ## Data flow
 
-```
-OAP                       BFF                              UI
-─────────────────────     ──────────────────────────────   ────────────────────
-listLayers                                                 
-listServices(layer)       /api/menu                        useLayers()
-listLayerLevels       →   merge with                  →    useLandingOrder()
-getMenuItems              bundled_templates/layers/        AppSidebar.vue
-                          <key>.json
-```
-
-1. **OAP discovery.** The BFF calls the four GraphQL queries on every `/api/menu` hit. Layers reported by `listLayers` are "active".
-2. **Template merge.** For each active layer, the BFF loads `bundled_templates/layers/<key>.json` (or applies defaults if absent) and merges OAP-provided data with template-provided cosmetics: `alias`, `color`, `group`, `visibility`, `caps`, `slots`, `header`, `overview`, `log`, `traces`, `naming`, `documentLink`.
-3. **Counts.** For each layer, `listServices(layer)` is called to get the service count. The count is `-1` if OAP is unreachable.
-4. **UI hydration.** The UI receives a `MenuResponse` with the layer list and renders the sidebar via `useLayers` (which layers exist) and `useLandingOrder` (in what order).
+1. **OAP discovery.** Layers reported by `listLayers` are "active".
+2. **Template merge.** For each active layer, the bundled `bundled_templates/layers/<key>.json` (or defaults if absent) is merged with OAP-provided data, contributing template cosmetics: `alias`, `color`, `group`, `visibility`, `caps`, `slots`, `header`, `overview`, `log`, `traces`, `naming`, `documentLink`.
+3. **Counts.** Each layer carries a service count from `listServices(layer)`. The count is `-1` if OAP is unreachable.
+4. **Sidebar render.** The sidebar shows the layer list, ordered per the user's landing-order preference.
 
 ## The `MenuResponse` shape
-
-`packages/api-client/src/menu.ts`:
 
 ```ts
 interface MenuResponse {
@@ -65,7 +53,7 @@ The sidebar has two main sections + the static Operate group:
 
 Active, public layers (`visibility: 'public'`, `serviceCount > 0`). Sorted by:
 
-1. `useLandingOrder` — per-user `landing.priority` from the setup store.
+1. Per-user `landing.priority` from the setup store.
 2. Falls back to `level` from `listLayerLevels` when no user priority is set.
 
 A layer with `serviceCount === 0` is hidden from the Layers section but still available for the admin's setup screen ("enable this layer when services appear").
@@ -95,7 +83,7 @@ These are not layer-derived; they are first-class Horizon features.
 
 ## Per-layer composition
 
-When a user clicks a layer in the sidebar, `firstLayerTab()` picks the first enabled sub-route from this priority order:
+When a user clicks a layer in the sidebar, the first enabled sub-route is picked from this priority order:
 
 ```
 service → instance → endpoint → topology → trace → logs → profiling

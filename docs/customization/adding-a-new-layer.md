@@ -26,7 +26,7 @@ curl -s -X POST <queryUrl>/graphql \
   -d '{"query":"{ listServices(layer:\"<KEY>\") { id name normal } }"}' | jq
 ```
 
-A layer with zero services is hidden from the sidebar (it appears in the BFF's menu response but is filtered out by `availableLayers`). Ingest some data first, then proceed.
+A layer with zero services is hidden from the sidebar (it appears in the menu response but is filtered out of the visible list). Ingest some data first, then proceed.
 
 ### 3. Identify the layer's metric prefix
 

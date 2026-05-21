@@ -22,9 +22,7 @@ The entire admin-port surface (all four modules) is **OAP 11.x only**. On OAP 10
 
 ## How Horizon detects module state
 
-Source: `apps/bff/src/logic/preflight/preflight.ts`.
-
-1. BFF fires `GET <adminUrl>/debugging/config/dump` (polled every 60 seconds from the UI).
+1. Horizon fires `GET <adminUrl>/debugging/config/dump` (polled every 60 seconds from the UI).
 2. OAP returns a flat key/value map in `module.provider.property` form, e.g.:
 
    ```

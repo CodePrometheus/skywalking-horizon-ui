@@ -1,6 +1,6 @@
 # Dashboard Widgets
 
-Four widget types render on per-layer dashboards. Each `widget.type` you set in a template selects one of them.
+Five widget types render on per-layer dashboards. Each `widget.type` you set in a template selects one of them.
 
 ## Grid context
 
@@ -19,13 +19,15 @@ interface DashboardWidget {
   id: string;
   title: string;
   tip?: string;
-  type: 'card' | 'line' | 'top' | 'record';
+  type: 'card' | 'line' | 'top' | 'record' | 'table';
   expressions: string[];
   expressionLabels?: string[];
   expressionUnits?: string[];
   expressionAxes?: number[];
   unit?: string;
   format?: 'int' | 'decimal' | 'compact';
+  tableHeaders?: [string, string];
+  showTableValues?: boolean;
   span?: number;
   rowSpan?: number;
   visibleWhen?: string;
@@ -35,12 +37,14 @@ interface DashboardWidget {
 
 | Field | Notes |
 |---|---|
-| `expressions[]` | MQE expressions. `card` typically uses one; `line` one-per-series; `top` one-per-tab. |
+| `expressions[]` | MQE expressions. `card` typically uses one; `line` one-per-series; `top` one-per-tab; `table` one labeled `latest(…)` metric. |
 | `expressionLabels[]` | Used by `top` for tab labels and by `line` for legend names. |
 | `expressionUnits[]` | Per-expression unit override (mixed-unit charts). |
 | `expressionAxes[]` | `0` = left axis (default), `1` = right axis. |
 | `unit` | Widget-level default. |
 | `format` | `int`, `decimal`, `compact`. |
+| `tableHeaders` | `table` only — `[, valueHeader]`; the value column's header. Label columns are headed by their dimension name. |
+| `showTableValues` | `table` only — show the value column. `false` for presence-only lists (e.g. node conditions). Default `true`. |
 | `visibleWhen` | Predicate. `#entity.<key>` (hides the widget unless the named entity is selected) or `<metric> has value` (hides unless the metric returns data). |
 | `layerScope` | Evaluate against the whole layer rather than the selected service. |
 
@@ -190,6 +194,34 @@ The data source returns a record set (rows × typed columns) rather than a numer
 - Renders as a dense table with column headers from the record's typed fields.
 - Supports sort, filter, and pagination.
 
+## `table`
+
+**Renders:** A key→value table for a **labeled** `latest(…)` metric — one row per label combination, one column per label dimension, plus an optional value column.
+
+### When to use
+
+For multi-dimensional status metrics that a scalar `card` can't summarize and a time-series `line` misrepresents — e.g. pod phase per service, node condition, deployment replicas, queue depth per topic. The MQE is a single `latest(<labeled metric>)`; each returned label set becomes a row.
+
+### Example
+
+```json
+{
+  "id": "node_status",
+  "title": "Node Status",
+  "type": "table",
+  "expressions": ["latest(k8s_cluster_node_status)"],
+  "showTableValues": false
+}
+```
+
+Renders columns `Condition | Node` (one per label key). A widget like Deployment Replicas sets `"showTableValues": true` and `"tableHeaders": ["", "Replicas"]` to show the value column headed "Replicas".
+
+### Behavior
+
+- Columns are derived from the union of label keys across rows; headers are the dimension names (the value column header comes from `tableHeaders[1]`).
+- `showTableValues: false` drops the value column for presence-only lists (where the value is always 1).
+- Scrolls within the widget when rows overflow.
+
 ## Visibility predicates
 
 `visibleWhen` lets a widget hide itself based on context:
@@ -220,7 +252,8 @@ The predicate is evaluated on every data refresh; the widget disappears (rather 
 
 | MQE outermost call | Widget type |
 |---|---|
-| `latest(...)`, `max(...)`, `min(...)`, `avg(<plain>)`, `sum(<plain>)` | `card` |
+| `latest(...)`, `max(...)`, `min(...)`, `avg(<plain>)`, `sum(<plain>)` (single scalar) | `card` |
+| `latest(<labeled metric>)` returning many label sets (status / phase / condition per entity) | `table` |
 | `rate(...)`, `increase(...)`, `relabels(...)`, `aggregate_labels(...)` without scalar collapse, `histogram*(...)` | `line` |
 | `top_n(...)` returning labeled list | `top` |
 | Record-shaped output (slow SQL, slow gRPC) | `record` |

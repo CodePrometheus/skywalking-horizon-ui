@@ -1,6 +1,6 @@
 # RBAC: Roles & Verbs
 
-Horizon enforces access at the BFF on every HTTP request. The UI hides controls based on the verbs the session reports, but the enforcement is server-side — a forged UI cannot escalate. This page is the full reference for the verb vocabulary, the four built-in roles, and how grants are matched against requests.
+Horizon enforces access at the BFF on every HTTP request. The UI hides controls based on the verbs the session reports, but the enforcement is server-side — a forged UI cannot escalate. The UI also gates whole pages by verb: navigating to a restricted page you lack the verb for (by URL or a stray link) redirects you home, so a viewer can't land on a maintainer page even if its data comes from a shared endpoint. This page is the full reference for the verb vocabulary, the four built-in roles, and how grants are matched against requests.
 
 ## Model
 

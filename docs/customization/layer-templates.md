@@ -325,11 +325,23 @@ Service-name parsing rule. Extracts a cluster (or other token) from the OAP-repo
 
 When set, the layer's service list groups by `cluster`. Without it, services are listed flat.
 
-## Admin editor
+## Admin editor — edit locally, publish on your terms
 
-Layer templates are editable at runtime via `/admin/layer-templates` (verb `dashboard:write`). The editor shows the JSON tree with per-field type-aware controls. Changes are validated against the same schema as the bundled files, then written through `POST /api/admin/layer-templates/:key`.
+Layer templates are editable at runtime via `/admin/layer-templates` (verb `dashboard:write`). The editor shows the JSON tree with per-field type-aware controls; changes are validated against the same schema as the bundled files.
 
-Bundled templates remain in-place; admin edits override them per-instance and persist in the configured location.
+The save/publish model has two steps:
+
+1. **Save locally.** "Save locally" writes your edit to the local bundled copy and renders it immediately for preview — it does **not** touch OAP. The template now shows as **diverged** (local differs from what OAP serves), the row carries a *Synced from OAP — N diverged* banner, and the affected layers show a yellow warning icon in the sidebar. Save works even when OAP is unreachable.
+2. **Publish.** **Sync all to OAP** pushes the diverged templates to OAP (the runtime source of truth) — only the ones that differ — behind a confirmation that lists exactly what will be written. After publishing, the template is synced and everyone sees it.
+
+A **Diverged only** filter and a **Showing: Local / Remote** display toggle sit at the top of the page; **Show diff** opens a side-by-side bundled-vs-OAP comparison.
+
+### Local vs. remote conflicts
+
+OAP is the source of truth at runtime, so by default the app renders the OAP-stored version. When your local edits diverge, a per-session prompt (listing the affected items by menu name) asks which to render:
+
+- **Keep my local edits** — render your local copy for preview; publish later with Sync all.
+- **Use live** — overwrite your local copy with the remote (OAP) version. This **discards your local edits** and is confirmed first; use it when OAP holds the newer version.
 
 ## Bundled examples
 

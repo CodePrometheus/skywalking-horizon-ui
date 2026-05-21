@@ -80,34 +80,48 @@
   "dashboards": {
     "service": [
       {
-        "id": "today_msgs",
-        "title": "Messages Today",
-        "type": "line",
+        "id": "today_produced",
+        "title": "Produced Today",
+        "type": "card",
         "expressions": [
-          "latest(meter_rocketmq_cluster_messages_produced_today)",
-          "latest(meter_rocketmq_cluster_messages_consumed_today)"
+          "latest(meter_rocketmq_cluster_messages_produced_today)"
         ],
-        "expressionLabels": [
-          "produced",
-          "consumed"
-        ],
-        "span": 6,
-        "rowSpan": 2
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
       },
       {
-        "id": "yesterday_msgs",
-        "title": "Messages Yesterday",
-        "type": "line",
+        "id": "today_consumed",
+        "title": "Consumed Today",
+        "type": "card",
         "expressions": [
-          "latest(meter_rocketmq_cluster_messages_produced_until_yesterday)",
+          "latest(meter_rocketmq_cluster_messages_consumed_today)"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "yesterday_produced",
+        "title": "Produced Yesterday",
+        "type": "card",
+        "expressions": [
+          "latest(meter_rocketmq_cluster_messages_produced_until_yesterday)"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "yesterday_consumed",
+        "title": "Consumed Yesterday",
+        "type": "card",
+        "expressions": [
           "latest(meter_rocketmq_cluster_messages_consumed_until_yesterday)"
         ],
-        "expressionLabels": [
-          "produced",
-          "consumed"
-        ],
-        "span": 6,
-        "rowSpan": 2
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
       },
       {
         "id": "tps",
@@ -183,19 +197,26 @@
         "rowSpan": 2
       },
       {
-        "id": "topics_brokers",
-        "title": "Topics / Brokers",
-        "type": "line",
+        "id": "topic_count",
+        "title": "Topics",
+        "type": "card",
         "expressions": [
-          "latest(meter_rocketmq_cluster_topic_count)",
+          "latest(meter_rocketmq_cluster_topic_count)"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "broker_count",
+        "title": "Brokers",
+        "type": "card",
+        "expressions": [
           "latest(meter_rocketmq_cluster_broker_count)"
         ],
-        "expressionLabels": [
-          "topics",
-          "brokers"
-        ],
-        "span": 12,
-        "rowSpan": 2
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
       }
     ],
     "instance": [

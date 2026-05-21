@@ -125,25 +125,59 @@
         "rowSpan": 1
       },
       {
-        "id": "shards_breakdown",
-        "title": "Shards Breakdown",
-        "type": "line",
+        "id": "shards_active",
+        "title": "Active Shards",
+        "type": "card",
         "expressions": [
-          "latest(meter_elasticsearch_cluster_shards_total)",
-          "latest(meter_elasticsearch_cluster_initializing_shards_total)",
-          "latest(meter_elasticsearch_cluster_relocating_shards_total)",
-          "latest(meter_elasticsearch_cluster_unassigned_shards_total)",
+          "latest(meter_elasticsearch_cluster_shards_total)"
+        ],
+        "span": 2,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "shards_initializing",
+        "title": "Initializing",
+        "type": "card",
+        "expressions": [
+          "latest(meter_elasticsearch_cluster_initializing_shards_total)"
+        ],
+        "span": 2,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "shards_relocating",
+        "title": "Relocating",
+        "type": "card",
+        "expressions": [
+          "latest(meter_elasticsearch_cluster_relocating_shards_total)"
+        ],
+        "span": 2,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "shards_unassigned",
+        "title": "Unassigned",
+        "type": "card",
+        "expressions": [
+          "latest(meter_elasticsearch_cluster_unassigned_shards_total)"
+        ],
+        "span": 2,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "shards_delayed",
+        "title": "Delayed Unassigned",
+        "type": "card",
+        "expressions": [
           "latest(meter_elasticsearch_cluster_delayed_unassigned_shards_total)"
         ],
-        "expressionLabels": [
-          "active",
-          "initializing",
-          "relocating",
-          "unassigned",
-          "delayed-unassigned"
-        ],
-        "span": 6,
-        "rowSpan": 2
+        "span": 2,
+        "rowSpan": 1,
+        "format": "int"
       },
       {
         "id": "breakers",
@@ -393,20 +427,28 @@
         "rowSpan": 2
       },
       {
-        "id": "data_size",
-        "title": "Index Size",
-        "type": "line",
-        "unit": "GB",
+        "id": "idx_size_all",
+        "title": "Index Size (all shards)",
+        "type": "card",
         "expressions": [
-          "latest(meter_elasticsearch_index_indices_store_size_bytes_total)/1024/1024/1024",
+          "latest(meter_elasticsearch_index_indices_store_size_bytes_total)/1024/1024/1024"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "decimal",
+        "unit": "GB"
+      },
+      {
+        "id": "idx_size_primary",
+        "title": "Index Size (primary)",
+        "type": "card",
+        "expressions": [
           "latest(meter_elasticsearch_index_indices_store_size_bytes_primary)/1024/1024/1024"
         ],
-        "expressionLabels": [
-          "all shards",
-          "primary"
-        ],
-        "span": 6,
-        "rowSpan": 2
+        "span": 3,
+        "rowSpan": 1,
+        "format": "decimal",
+        "unit": "GB"
       },
       {
         "id": "docs",

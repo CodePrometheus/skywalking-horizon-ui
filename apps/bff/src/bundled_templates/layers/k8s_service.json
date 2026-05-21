@@ -107,23 +107,44 @@
   "dashboards": {
     "service": [
       {
-        "id": "pod_capacity",
+        "id": "pod_total",
         "title": "Service Pods",
-        "tip": "Pod count + waiting / restart counters.",
         "type": "line",
         "expressions": [
-          "k8s_service_pod_total",
-          "latest(k8s_service_pod_status_waiting)",
-          "latest(k8s_service_pod_status_restarts_total)"
-        ],
-        "expressionLabels": [
-          "total",
-          "waiting",
-          "restarts"
+          "k8s_service_pod_total"
         ],
         "span": 4,
-        "rowSpan": 2,
-        "format": "int"
+        "rowSpan": 2
+      },
+      {
+        "id": "pod_waiting",
+        "title": "Pods Waiting",
+        "type": "table",
+        "expressions": [
+          "latest(k8s_service_pod_status_waiting)"
+        ],
+        "tableHeaders": [
+          "Container \u00b7 Pod \u00b7 Reason",
+          ""
+        ],
+        "showTableValues": false,
+        "span": 4,
+        "rowSpan": 3
+      },
+      {
+        "id": "pod_restarts",
+        "title": "Pod Restarts",
+        "type": "table",
+        "expressions": [
+          "latest(k8s_service_pod_status_restarts_total)"
+        ],
+        "tableHeaders": [
+          "Pod",
+          "Restarts"
+        ],
+        "showTableValues": true,
+        "span": 4,
+        "rowSpan": 3
       },
       {
         "id": "cpu_resources",

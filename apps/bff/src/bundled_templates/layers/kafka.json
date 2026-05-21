@@ -217,19 +217,26 @@
         "rowSpan": 2
       },
       {
-        "id": "isr",
-        "title": "ISR Shrinks / Expands",
-        "type": "line",
+        "id": "isr_shrinks",
+        "title": "ISR Shrinks/s",
+        "type": "card",
         "expressions": [
-          "latest(meter_kafka_broker_isr_shrinks_per_second)",
-          "latest(meter_kafka_broker_isr_expands_per_second)"
-        ],
-        "expressionLabels": [
-          "shrinks",
-          "expands"
+          "latest(meter_kafka_broker_isr_shrinks_per_second)"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 1,
+        "format": "decimal"
+      },
+      {
+        "id": "isr_expands",
+        "title": "ISR Expands/s",
+        "type": "card",
+        "expressions": [
+          "latest(meter_kafka_broker_isr_expands_per_second)"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "decimal"
       },
       {
         "id": "mem_pct",
@@ -244,18 +251,25 @@
       },
       {
         "id": "under_replicated",
-        "title": "Under-Replicated",
-        "type": "line",
+        "title": "Under-Replicated Partitions",
+        "type": "card",
         "expressions": [
-          "latest(meter_kafka_broker_under_replicated_partitions)",
+          "latest(meter_kafka_broker_under_replicated_partitions)"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "under_min_isr",
+        "title": "Under Min-ISR Partitions",
+        "type": "card",
+        "expressions": [
           "latest(meter_kafka_broker_under_min_isr_partition_count)"
         ],
-        "expressionLabels": [
-          "under-replicated",
-          "under-min-isr"
-        ],
-        "span": 6,
-        "rowSpan": 2
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
       },
       {
         "id": "partitions_leaders",

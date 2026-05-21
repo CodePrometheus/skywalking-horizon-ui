@@ -252,19 +252,26 @@
         "rowSpan": 2
       },
       {
-        "id": "keeper",
-        "title": "Keeper",
-        "type": "line",
+        "id": "keeper_alive",
+        "title": "Keeper Alive Conns",
+        "type": "card",
         "expressions": [
-          "latest(aggregate_labels(meter_clickhouse_keeper_connections_alive,sum))",
+          "latest(aggregate_labels(meter_clickhouse_keeper_connections_alive,sum))"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "keeper_outstanding",
+        "title": "Keeper Outstanding Requests",
+        "type": "card",
+        "expressions": [
           "latest(aggregate_labels(meter_clickhouse_keeper_outstanding_requests,sum))"
         ],
-        "expressionLabels": [
-          "alive conns",
-          "outstanding"
-        ],
-        "span": 6,
-        "rowSpan": 2
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
       }
     ],
     "instance": [

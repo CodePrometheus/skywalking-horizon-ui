@@ -93,19 +93,26 @@
         "rowSpan": 1
       },
       {
-        "id": "slots",
-        "title": "Slots Total / Available",
-        "type": "line",
+        "id": "slots_total",
+        "title": "Slots Total",
+        "type": "card",
         "expressions": [
-          "latest(meter_flink_jobManager_taskManagers_slots_total)",
-          "latest(meter_flink_jobManager_taskManagers_slots_available)"
-        ],
-        "expressionLabels": [
-          "total",
-          "available"
+          "latest(meter_flink_jobManager_taskManagers_slots_total)"
         ],
         "span": 3,
-        "rowSpan": 2
+        "rowSpan": 1,
+        "format": "int"
+      },
+      {
+        "id": "slots_available",
+        "title": "Slots Available",
+        "type": "card",
+        "expressions": [
+          "latest(meter_flink_jobManager_taskManagers_slots_available)"
+        ],
+        "span": 3,
+        "rowSpan": 1,
+        "format": "int"
       },
       {
         "id": "cpu_load",

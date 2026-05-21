@@ -186,22 +186,32 @@
       {
         "id": "db_data_size",
         "title": "DB Total Data (GB)",
-        "type": "card",
+        "type": "table",
         "expressions": [
           "latest(aggregate_labels(meter_mongodb_cluster_db_data_size, sum(database)))/1024/1024/1024"
         ],
         "span": 4,
-        "rowSpan": 1
+        "rowSpan": 3,
+        "tableHeaders": [
+          "Database",
+          "Data (GB)"
+        ],
+        "showTableValues": true
       },
       {
         "id": "db_index_size",
         "title": "DB Total Index (GB)",
-        "type": "card",
+        "type": "table",
         "expressions": [
           "latest(aggregate_labels(meter_mongodb_cluster_db_index_size, sum(database)))/1024/1024/1024"
         ],
         "span": 4,
-        "rowSpan": 1
+        "rowSpan": 3,
+        "tableHeaders": [
+          "Database",
+          "Index (GB)"
+        ],
+        "showTableValues": true
       }
     ],
     "instance": [
@@ -228,12 +238,17 @@
       {
         "id": "rs_state",
         "title": "ReplSet State",
-        "type": "line",
+        "type": "table",
         "expressions": [
-          "meter_mongodb_node_rs_state"
+          "latest(meter_mongodb_node_rs_state)"
         ],
-        "span": 3,
-        "rowSpan": 2
+        "span": 4,
+        "rowSpan": 3,
+        "tableHeaders": [
+          "Node",
+          "ReplSet state"
+        ],
+        "showTableValues": true
       },
       {
         "id": "conns",

@@ -82,12 +82,17 @@
       {
         "id": "health",
         "title": "Cluster Health",
-        "type": "line",
+        "type": "table",
         "expressions": [
-          "meter_elasticsearch_cluster_health_status"
+          "latest(meter_elasticsearch_cluster_health_status)"
         ],
-        "span": 3,
-        "rowSpan": 2
+        "span": 4,
+        "rowSpan": 3,
+        "tableHeaders": [
+          "Status",
+          "Value"
+        ],
+        "showTableValues": true
       },
       {
         "id": "nodes",

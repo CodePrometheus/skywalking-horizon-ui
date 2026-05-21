@@ -174,12 +174,17 @@
       {
         "id": "datastore",
         "title": "Datastore Reachable",
-        "type": "card",
+        "type": "table",
         "expressions": [
           "latest(aggregate_labels(meter_kong_service_datastore_reachable,sum(service_instance_id)))"
         ],
-        "span": 6,
-        "rowSpan": 1
+        "span": 4,
+        "rowSpan": 3,
+        "tableHeaders": [
+          "Instance",
+          "Reachable"
+        ],
+        "showTableValues": true
       },
       {
         "id": "nginx_errors",

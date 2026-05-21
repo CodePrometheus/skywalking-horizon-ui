@@ -29,14 +29,20 @@ const props = withDefaults(
      *  leftover height and scrolls internally, so the popout never grows
      *  a vertical scrollbar. */
     fitBody?: boolean;
+    /** When false the dialog is a forced choice: no × button, and
+     *  backdrop-click / Escape don't dismiss it. Defaults true. */
+    dismissable?: boolean;
   }>(),
-  { width: '520px', fitBody: false },
+  { width: '520px', fitBody: false, dismissable: true },
 );
 
 const emit = defineEmits<{ close: [] }>();
 
+function onBackdrop(): void {
+  if (props.dismissable) emit('close');
+}
 function onKey(e: KeyboardEvent): void {
-  if (props.open && e.key === 'Escape') emit('close');
+  if (props.open && props.dismissable && e.key === 'Escape') emit('close');
 }
 
 onMounted(() => window.addEventListener('keydown', onKey));
@@ -45,11 +51,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal" role="dialog" aria-modal="true" @click.self="emit('close')">
+    <div v-if="open" class="modal" role="dialog" aria-modal="true" @click.self="onBackdrop">
       <div class="modal__panel" :class="{ 'modal__panel--fit': fitBody }" :style="{ width: props.width }">
         <header class="modal__header">
           <span class="modal__title">{{ title }}</span>
           <button
+            v-if="dismissable"
             type="button"
             class="modal__close"
             aria-label="close"

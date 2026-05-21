@@ -24,9 +24,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import Modal from '@/features/operate/_shared/Modal.vue';
-import { useConfigBundle, setTemplateRenderMode } from '@/controls/configBundle';
+import { useConfigBundle, setTemplateRenderMode, refreshConfigBundle } from '@/controls/configBundle';
 import { useTemplatePreference } from '@/controls/templatePreference';
 import { useLayers } from '@/shell/useLayers';
+import { bffClient } from '@/api/client';
 
 const { bundle } = useConfigBundle();
 const pref = useTemplatePreference();
@@ -52,18 +53,37 @@ const divergedItems = computed<string[]>(() => {
 const divergedCount = computed(() => divergedItems.value.length);
 const open = computed(() => pref.mode === null && divergedCount.value > 0);
 
-// Second step shown when the operator picks "use live" — abandoning the
-// local preview for the remote version needs an explicit confirm.
+// Second step shown when the operator picks "use live" — overriding the
+// local edits with the remote version is destructive, so it's confirmed.
 const confirmingRemote = ref(false);
+const busy = ref(false);
 
-async function choose(mode: 'local' | 'remote'): Promise<void> {
-  confirmingRemote.value = false;
-  await setTemplateRenderMode(mode);
+async function useLocal(): Promise<void> {
+  await setTemplateRenderMode('local');
+}
+
+// Override local with remote: discard the local edits (revert bundled to
+// the live version), then render remote.
+async function useLive(): Promise<void> {
+  if (busy.value) return;
+  busy.value = true;
+  try {
+    await bffClient.templateSync.revertLocal();
+    await refreshConfigBundle();
+    pref.set('remote');
+  } finally {
+    busy.value = false;
+    confirmingRemote.value = false;
+  }
 }
 </script>
 
 <template>
-  <Modal :open="open" :title="confirmingRemote ? 'Use the live version?' : 'Local template changes not published'">
+  <Modal
+    :open="open"
+    :dismissable="false"
+    :title="confirmingRemote ? 'Use the live version?' : 'Local template changes not published'"
+  >
     <div v-if="!confirmingRemote" class="tcp">
       <p class="tcp__lede">
         <b>{{ divergedCount }}</b> dashboard{{ divergedCount === 1 ? '' : 's' }} differ between your
@@ -80,21 +100,23 @@ async function choose(mode: 'local' | 'remote'): Promise<void> {
     </div>
     <div v-else class="tcp">
       <p class="tcp__lede tcp__warn">
-        This session will render the <b>live (remote)</b> version. Your <b>{{ divergedCount }}</b>
-        local change{{ divergedCount === 1 ? '' : 's' }} will <b>not be shown</b> and stay
-        unpublished — publish them with “Sync all to OAP” first if you want to keep them, or they
-        can be lost the next time the bundled templates are regenerated. Continue?
+        OAP holds a different (newer) version. Using live will <b>overwrite your
+        {{ divergedCount }} local change{{ divergedCount === 1 ? '' : 's' }}</b> with the remote
+        version — your local edits are <b>discarded and cannot be recovered</b>. Publish them with
+        “Sync all to OAP” instead if you want to keep them. Override local with live?
       </p>
     </div>
 
     <template #footer>
       <template v-if="!confirmingRemote">
-        <button class="sw-btn" type="button" @click="confirmingRemote = true">Use remote (live)</button>
-        <button class="sw-btn primary" type="button" @click="choose('local')">Use my local edits</button>
+        <button class="sw-btn" type="button" @click="confirmingRemote = true">Use live (remote)</button>
+        <button class="sw-btn primary" type="button" @click="useLocal">Keep my local edits</button>
       </template>
       <template v-else>
-        <button class="sw-btn" type="button" @click="confirmingRemote = false">Back</button>
-        <button class="sw-btn danger" type="button" @click="choose('remote')">Use live, ignore local</button>
+        <button class="sw-btn" type="button" :disabled="busy" @click="confirmingRemote = false">Back</button>
+        <button class="sw-btn danger" type="button" :disabled="busy" @click="useLive">
+          {{ busy ? 'Overriding…' : 'Overwrite local with live' }}
+        </button>
       </template>
     </template>
   </Modal>

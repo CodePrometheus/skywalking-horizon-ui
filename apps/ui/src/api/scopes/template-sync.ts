@@ -87,6 +87,17 @@ export class TemplateSyncApi {
     );
   }
 
+  /** Discard local edits: overwrite the bundled file with the REMOTE
+   *  (live) version for every diverged template. The "use live, override
+   *  local" reconciliation. Optionally scoped by `kind`. */
+  revertLocal(kind?: TemplateKind): Promise<TemplateSyncStatus> {
+    return this.bff.request<TemplateSyncStatus>(
+      'POST',
+      '/api/admin/templates/revert-local',
+      kind ? { kind } : {},
+    );
+  }
+
   /** Push the bundled copy of every template that differs from OAP
    *  (`diverged`) or is absent on OAP (`bundled-fallback`), in one batch.
    *  Scoped to `kind` so each admin page syncs only its own family. The

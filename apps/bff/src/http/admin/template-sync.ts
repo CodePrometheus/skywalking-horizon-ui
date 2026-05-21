@@ -63,11 +63,14 @@ import {
 import { iterateBundledTemplates } from '../../logic/templates/aggregator.js';
 import {
   buildEnvelope,
+  parseEnvelope,
   parseName,
   serializeEnvelope,
   type TemplateKind,
 } from '../../logic/templates/names.js';
+import type { LayerTemplate } from '../../logic/layers/loader.js';
 import { writeLayerTemplate } from '../../logic/layers/loader.js';
+import type { OverviewDashboard } from '@skywalking-horizon-ui/api-client';
 import { writeOverviewDashboard } from '../../logic/overview/loader.js';
 import { logger } from '../../logger.js';
 
@@ -191,6 +194,49 @@ export function registerTemplateSyncAdminRoutes(
     resync();
     const fresh = await loadStatus(deps);
     return reply.send({ ...fresh, synced, failed });
+  });
+
+  // Revert-local: discard local edits by overwriting the BUNDLED file
+  // with the REMOTE (live) version for every diverged template — the
+  // "use live, override local" reconciliation when OAP holds the newer
+  // copy. Optionally scoped by `kind`. Requires OAP reachable (we need
+  // the remote content).
+  app.post<{
+    Body: { kind?: TemplateKind };
+  }>('/api/admin/templates/revert-local', { preHandler: auth }, async (req, reply) => {
+    const kind = req.body?.kind;
+    const status = await loadStatus(deps);
+    if (status.unreachable) {
+      return reply.code(409).send({
+        code: 'oap_unreachable',
+        message: 'OAP admin port unreachable — cannot fetch the remote version',
+      });
+    }
+    const targets = status.rows.filter(
+      (r) => (!kind || r.kind === kind) && r.status === 'diverged' && !!r.remote,
+    );
+    const reverted: string[] = [];
+    const failed: Array<{ name: string; error: string }> = [];
+    for (const row of targets) {
+      try {
+        const env = parseEnvelope(row.remote!.configuration);
+        if (!env) throw new Error('remote envelope not parseable');
+        if (row.kind === 'layer') {
+          writeLayerTemplate(env.content as LayerTemplate);
+        } else if (row.kind === 'overview') {
+          writeOverviewDashboard(row.key, env.content as OverviewDashboard);
+        } else {
+          throw new Error(`revert supports layer + overview, not ${row.kind}`);
+        }
+        reverted.push(row.name);
+      } catch (err) {
+        logger.warn({ err: errMsg(err), name: row.name }, 'revert-local failed');
+        failed.push({ name: row.name, error: errMsg(err) });
+      }
+    }
+    resync();
+    const fresh = await loadStatus(deps);
+    return reply.send({ ...fresh, reverted, failed });
   });
 
   // Save-local: write the edited template to the BUNDLED file on disk

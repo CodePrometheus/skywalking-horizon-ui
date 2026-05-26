@@ -58,7 +58,7 @@ import { registerOverviewRoutes } from './http/config/overview.js';
 import { registerConfigBundleRoute } from './http/config/bundle.js';
 import { registerTemplateSyncAdminRoutes } from './http/admin/template-sync.js';
 import { buildOapClients } from './client/index.js';
-import { bootSeed } from './logic/templates/sync.js';
+import { bootSeed, waitForOapAdminReady } from './logic/templates/sync.js';
 import { iterateBundledTemplates, iterateBundledOverlays } from './logic/templates/aggregator.js';
 // Admin (operational tools)
 import { registerDslCatalogRoutes } from './http/admin/dsl/catalog.js';
@@ -251,34 +251,49 @@ app.get('/api/health', async () => ({
 }));
 
 const { host, port } = source.current.server;
+// AbortController bound to shutdown so the readiness wait can exit
+// cleanly when the BFF is signal-killed mid-backoff (k8s rolling
+// restart, ctrl-c, etc.) instead of holding the process open.
+const bootSeedAbort = new AbortController();
 app.listen({ host, port }).then(
   () => {
     logger.info(`BFF listening on http://${host}:${port}`);
-    // Fire-and-forget the boot-time OAP template seed: list OAP, POST any
-    // bundled template that's missing on the OAP side. This is the ONLY
-    // path that writes implicitly to OAP — runtime sync is read-only.
-    // Failures are non-fatal: the BFF stays up, the UI falls back to
-    // bundled templates and shows the read-only banner.
-    void bootSeed({
-      client: buildOapClients(source.current).uiTemplate(),
-      bundled: () => iterateBundledTemplates(),
-      bundledOverlays: () => iterateBundledOverlays(),
-      logger,
-    })
-      .then((status) => {
+    // Wait for OAP admin readiness, then run the boot-time template
+    // seed ONCE. Two-phase so we don't lose the seed when OAP is still
+    // starting up alongside the BFF (compose / k8s rollout, slow OAP
+    // module wiring). The wait is a backoff loop that warn-logs each
+    // failed ping; once `client.list()` succeeds we run bootSeed and
+    // never touch the admin port from here again until an operator
+    // admin action triggers a fresh sync. The seed itself is
+    // absent-only (`seedMissing` skips templates already present), so
+    // a successful previous boot leaves nothing to re-push.
+    void (async (): Promise<void> => {
+      const deps = {
+        client: buildOapClients(source.current).uiTemplate(),
+        bundled: () => iterateBundledTemplates(),
+        bundledOverlays: () => iterateBundledOverlays(),
+        logger,
+      };
+      try {
+        await waitForOapAdminReady(deps, bootSeedAbort.signal);
+        if (bootSeedAbort.signal.aborted) return;
+        const status = await bootSeed(deps);
         if (status.unreachable) {
+          // Admin port flapped between readiness probe and the actual
+          // `bootSeed.list()` — very narrow window, but log it the
+          // same way so the operator notices.
           logger.warn(
             { lastSuccessfulSyncAt: status.lastSuccessfulSyncAt },
-            'OAP UI-template boot seed: admin unreachable, rendering bundled (admin pages will be read-only until OAP comes back)',
+            'OAP UI-template boot seed: admin became unreachable between readiness and seed',
           );
         } else {
           const counts = countByStatus(status.rows);
           logger.info(counts, 'OAP UI-template boot seed: complete');
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         logger.error({ err }, 'OAP UI-template boot seed: unexpected error');
-      });
+      }
+    })();
   },
   (err) => {
     logger.fatal({ err }, 'failed to start BFF');
@@ -294,6 +309,9 @@ function countByStatus(rows: Array<{ status: string }>): Record<string, number> 
 
 async function shutdown(signal: string) {
   logger.info({ signal }, 'shutting down');
+  // Cancel an in-flight OAP-admin readiness wait so the boot-seed
+  // promise resolves quickly instead of blocking shutdown.
+  bootSeedAbort.abort();
   await app.close();
   await sessions.close();
   await audit.close();

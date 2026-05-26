@@ -80,15 +80,16 @@ function onKey(ev: KeyboardEvent): void {
  *  — the MAL view then loads the file content, parses
  *  `metricsRules[].name`, and surfaces a metric picker inside (the
  *  OAP install needs `(name=<file>, ruleName=<metric>)` granularity).
- *  LAL goes to `/debug/lal?name=<rule>` — LAL rules are file-grained
- *  on the catalog side already, so the picker is single-step. OAL
- *  catalog isn't writable; rule cards aren't shown for it. */
+ *  LAL goes to `/operate/live-debug/lal?name=<rule>` — LAL rules are
+ *  file-grained on the catalog side already, so the picker is
+ *  single-step. OAL catalog isn't writable; rule cards aren't shown
+ *  for it. */
 const debugTarget = computed(() => {
   if (props.rule.catalog === 'lal') {
-    return { path: '/debug/lal', query: { name: props.rule.name } };
+    return { path: '/operate/live-debug/lal', query: { name: props.rule.name } };
   }
   return {
-    path: '/debug/mal',
+    path: '/operate/live-debug/mal',
     query: { catalog: props.rule.catalog, name: props.rule.name },
   };
 });
@@ -126,7 +127,8 @@ function jumpToDebug(ev: MouseEvent): void {
     <div class="card__row card__row--badges">
       <Pill v-if="override === 'modified'" tone="warn">modified</Pill>
       <Pill v-else-if="override === 'override'" tone="info">override</Pill>
-      <Pill v-else-if="override === 'bundled-only'" tone="dim">bundled</Pill>
+      <!-- 'bundled-only' is already conveyed by the BUNDLED status pill
+           in the header row above — don't duplicate it here. -->
       <span v-if="isSuspended" class="card__suspending">
         <StatusDot tone="warn" :size="6" />
         applying…

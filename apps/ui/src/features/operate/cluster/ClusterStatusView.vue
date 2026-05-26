@@ -16,6 +16,7 @@
 -->
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useOapInfo } from '@/shell/useOapInfo';
 import { useAdminFeatures } from '@/shell/useAdminFeatures';
 
@@ -31,6 +32,7 @@ import { useAdminFeatures } from '@/shell/useAdminFeatures';
 // (forgot to expose :17128 in the k8s service) and the page must
 // show that clearly.
 
+const { t } = useI18n({ useScope: 'global' });
 const {
   info,
   reachable,
@@ -65,11 +67,11 @@ const localTzLabel = computed<string>(() => {
 });
 
 const healthLabel = computed<string>(() => {
-  if (!reachable.value) return 'unreachable';
-  if (healthScore.value === undefined) return 'unknown';
-  if (healthScore.value < 0) return 'not started';
-  if (healthScore.value > 0) return `degraded (score ${healthScore.value})`;
-  return 'healthy';
+  if (!reachable.value) return t('unreachable');
+  if (healthScore.value === undefined) return t('unknown');
+  if (healthScore.value < 0) return t('not started');
+  if (healthScore.value > 0) return t('degraded (score {n})', { n: healthScore.value });
+  return t('healthy');
 });
 
 const adminBadgeState = computed<'ok' | 'warn' | 'err' | 'unknown'>(() => {
@@ -81,11 +83,11 @@ const adminBadgeState = computed<'ok' | 'warn' | 'err' | 'unknown'>(() => {
 });
 
 const adminBadgeLabel = computed<string>(() => {
-  if (!preflight.value) return 'loading…';
-  if (!adminReachable.value) return 'unreachable';
+  if (!preflight.value) return t('loading…');
+  if (!adminReachable.value) return t('unreachable');
   const off = preflight.value.modules.filter((m) => m.required && !m.enabled);
-  if (off.length === 0) return 'all selectors on';
-  return `${off.length} selector${off.length === 1 ? '' : 's'} off`;
+  if (off.length === 0) return t('all selectors on');
+  return t('{n} selectors off', { n: off.length });
 });
 
 const adminGeneratedAt = computed<string>(() => {
@@ -104,8 +106,8 @@ const zipkinBadgeState = computed<'ok' | 'err' | 'unknown'>(() => {
   return zipkinReachable.value ? 'ok' : 'err';
 });
 const zipkinBadgeLabel = computed<string>(() => {
-  if (zipkinReachable.value === undefined) return 'loading…';
-  return zipkinReachable.value ? 'reachable' : 'unreachable';
+  if (zipkinReachable.value === undefined) return t('loading…');
+  return zipkinReachable.value ? t('reachable') : t('unreachable');
 });
 
 function refreshAll(): void {
@@ -118,17 +120,13 @@ function refreshAll(): void {
   <div class="cluster">
     <header class="page-head">
       <div>
-        <div class="kicker">Operate · Cluster status</div>
-        <h1>OAP cluster</h1>
+        <div class="kicker">{{ t('Operate') }} · {{ t('Cluster status') }}</div>
+        <h1>{{ t('OAP cluster') }}</h1>
         <p class="lede">
-          Two-port view of the OAP backend horizon is connected to.
-          Query / GraphQL (<code>:12800</code>) drives every observability page;
-          the admin host (<code>:17128</code>) gates DSL management, Live debugger, Metrics inspect, and Dump;
-          the Zipkin / OTLP endpoint feeds only the Zipkin trace menu.
-          All three are polled independently — if one shows red the others can still be green.
+          {{ t('Two-port view of the OAP backend horizon is connected to. Query / GraphQL (:12800) drives every observability page; the admin host (:17128) gates DSL management, Live debugger, Metrics inspect, and Dump; the Zipkin / OTLP endpoint feeds only the Zipkin trace menu. All three are polled independently — if one shows red the others can still be green.') }}
         </p>
       </div>
-      <button type="button" class="refresh" @click="refreshAll">refresh both</button>
+      <button type="button" class="refresh" @click="refreshAll">{{ t('refresh both') }}</button>
     </header>
 
     <!-- ── Pane A · Query / GraphQL port (:12800) ────────────────── -->
@@ -142,40 +140,40 @@ function refreshAll(): void {
 
       <div class="grid">
         <div class="sw-card kpi">
-          <div class="sw-card-head"><h4>Version</h4></div>
+          <div class="sw-card-head"><h4>{{ t('Version') }}</h4></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ version ?? '—' }}</div>
-            <div class="kpi-label">{{ reachable ? info?.queryUrl : 'OAP unreachable' }}</div>
+            <div class="kpi-label">{{ reachable ? info?.queryUrl : t('OAP unreachable') }}</div>
           </div>
         </div>
 
         <div class="sw-card kpi">
-          <div class="sw-card-head"><h4>Server timezone</h4></div>
+          <div class="sw-card-head"><h4>{{ t('Server timezone') }}</h4></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ tzOffsetLabel || '—' }}</div>
-            <div class="kpi-label">Browser local: {{ localTzLabel }}</div>
+            <div class="kpi-label">{{ t('Browser local: {tz}', { tz: localTzLabel }) }}</div>
           </div>
         </div>
 
         <div class="sw-card kpi">
-          <div class="sw-card-head"><h4>Server clock</h4></div>
+          <div class="sw-card-head"><h4>{{ t('Server clock') }}</h4></div>
           <div class="kpi-body">
             <div class="kpi-value mono">{{ serverClockLocal }}</div>
-            <div class="kpi-label">As seen in your browser timezone</div>
+            <div class="kpi-label">{{ t('As seen in your browser timezone') }}</div>
           </div>
         </div>
 
         <div class="sw-card kpi">
-          <div class="sw-card-head"><h4>Health score</h4></div>
+          <div class="sw-card-head"><h4>{{ t('Health score') }}</h4></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ healthScore ?? '—' }}</div>
-            <div class="kpi-label">{{ info?.healthDetails ?? '0 ok · &gt;0 degraded · &lt;0 not started' }}</div>
+            <div class="kpi-label">{{ info?.healthDetails ?? t('0 ok · >0 degraded · <0 not started') }}</div>
           </div>
         </div>
       </div>
 
       <div v-if="!reachable && info?.error" class="last-error">
-        <strong>Last error</strong>
+        <strong>{{ t('Last error') }}</strong>
         <code>{{ info.error }}</code>
       </div>
     </section>
@@ -183,39 +181,34 @@ function refreshAll(): void {
     <!-- ── Pane B · Admin host (:17128) ──────────────────────────── -->
     <section class="pane">
       <header class="pane-head">
-        <h2>Admin host <span class="port">:17128</span></h2>
+        <h2>{{ t('Admin host') }} <span class="port">:17128</span></h2>
         <span class="sw-badge" :class="`is-${adminBadgeState}`">
           <span class="state-dot" />{{ adminBadgeLabel }}
         </span>
-        <span class="generated">checked {{ adminGeneratedAt }}</span>
+        <span class="generated">{{ t('checked {at}', { at: adminGeneratedAt }) }}</span>
       </header>
 
       <p class="pane-lede">
-        Per-module enablement on the admin port. Each row gates a slice of horizon's UI —
-        flip the corresponding env var on OAP and restart to enable, or remove the corresponding
-        page from your operator menu if you don't need it.
+        {{ t("Per-module enablement on the admin port. Each row gates a slice of horizon's UI — flip the corresponding env var on OAP and restart to enable, or remove the corresponding page from your operator menu if you don't need it.") }}
       </p>
 
-      <div v-if="!preflight" class="empty">loading preflight…</div>
+      <div v-if="!preflight" class="empty">{{ t('loading preflight…') }}</div>
 
       <div v-else-if="!adminReachable" class="last-error block">
-        <strong>Admin host unreachable</strong>
+        <strong>{{ t('Admin host unreachable') }}</strong>
         <code v-if="adminError">{{ adminError }}</code>
         <p class="hint">
-          Tried <code>{{ adminUrl }}/debugging/config/dump</code>.
-          Confirm the OAP <code>admin-server</code> module is on
-          (<code>SW_ADMIN_SERVER=default</code>) and the port is exposed on the network /
-          k8s Service / ingress.
+          {{ t('Tried {url}. Confirm the OAP admin-server module is on (SW_ADMIN_SERVER=default) and the port is exposed on the network / k8s Service / ingress.', { url: `${adminUrl}/debugging/config/dump` }) }}
         </p>
       </div>
 
       <table v-else class="mod-table">
         <thead>
           <tr>
-            <th>Module</th>
-            <th>State</th>
-            <th>Env var</th>
-            <th>Gates</th>
+            <th>{{ t('Module') }}</th>
+            <th>{{ t('State') }}</th>
+            <th>{{ t('Env var') }}</th>
+            <th>{{ t('Gates') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -223,11 +216,11 @@ function refreshAll(): void {
             <td class="modname"><code>{{ m.name }}</code></td>
             <td>
               <span class="sw-badge" :class="m.enabled ? 'is-ok' : 'is-err'">
-                <span class="state-dot" />{{ m.enabled ? 'enabled' : 'missing' }}
+                <span class="state-dot" />{{ m.enabled ? t('enabled') : t('missing') }}
               </span>
             </td>
             <td class="modenv"><code>{{ m.envVar }}</code></td>
-            <td class="modaffects">{{ m.affects }}</td>
+            <td class="modaffects">{{ t(m.affects) }}</td>
           </tr>
         </tbody>
       </table>
@@ -243,15 +236,12 @@ function refreshAll(): void {
       </header>
 
       <p class="pane-lede">
-        OAP's Zipkin v2 endpoint, source for the <strong>OpenTelemetry &amp; Zipkin</strong>
-        trace menu (shown when a layer's trace source is <code>zipkin</code> or <code>both</code>).
-        This is the <em>only</em> page affected — if it's unreachable, native traces and every
-        other observability page keep working.
+        {{ t("OAP's Zipkin v2 endpoint, source for the OpenTelemetry & Zipkin trace menu (shown when a layer's trace source is zipkin or both). This is the only page affected — if it's unreachable, native traces and every other observability page keep working.") }}
       </p>
 
       <div class="grid">
         <div class="sw-card kpi">
-          <div class="sw-card-head"><h4>Endpoint</h4></div>
+          <div class="sw-card-head"><h4>{{ t('Endpoint') }}</h4></div>
           <div class="kpi-body">
             <div class="kpi-value mono">{{ zipkinBadgeLabel }}</div>
             <div class="kpi-label">{{ info?.zipkinUrl ?? '—' }}</div>
@@ -260,14 +250,10 @@ function refreshAll(): void {
       </div>
 
       <div v-if="zipkinReachable === false" class="last-error block">
-        <strong>Zipkin endpoint unreachable</strong>
+        <strong>{{ t('Zipkin endpoint unreachable') }}</strong>
         <code v-if="info?.zipkinError">{{ info.zipkinError }}</code>
         <p class="hint">
-          Tried <code>{{ info?.zipkinUrl }}/api/v2/services</code>.
-          Confirm OAP's Zipkin receiver / query is enabled and the
-          <code>oap.zipkinUrl</code> in horizon's config points at the right host:port
-          (shared GraphQL port → <code>&lt;queryUrl&gt;/zipkin</code>; standalone → <code>:9412/zipkin</code>).
-          Only the Zipkin trace menu is affected.
+          {{ t("Tried {url}. Confirm OAP's Zipkin receiver / query is enabled and the oap.zipkinUrl in horizon's config points at the right host:port (shared GraphQL port → <queryUrl>/zipkin; standalone → :9412/zipkin). Only the Zipkin trace menu is affected.", { url: `${info?.zipkinUrl ?? ''}/api/v2/services` }) }}
         </p>
       </div>
     </section>

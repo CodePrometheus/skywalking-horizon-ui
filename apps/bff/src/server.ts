@@ -183,10 +183,16 @@ registerAsyncProfileRoutes(app, { config: source, sessions });
 // ── Config ─────────────────────────────────────────────────────────
 registerDashboardConfigRoute(app, { config: source, sessions });
 registerLayerTemplateRoutes(app, { config: source, sessions });
-// Spawn the bundled-template fs.watch once per process. Skipped in
-// tests (each test file imports the loader; a watcher per import
-// EMFILEs CI under low ulimits). Production calls this exactly once.
-if (process.env.NODE_ENV !== 'test') startLayerTemplateWatcher();
+// Spawn the bundled-template fs.watch ONLY in development. Bundled
+// templates ship inside the BFF image — they're immutable in prod
+// (rebuild + redeploy is how you'd change them), so an fs.watch on
+// `bundled_templates/` is pure overhead there. `tsx watch` only
+// reloads on `.ts` edits, so during local dev the watcher lets a
+// JSON edit (layer template, overlay catalog) take effect without
+// a manual restart. Tests skip it for the same EMFILE reason as
+// before (each test file imports the loader; a watcher per import
+// would exhaust the fd ceiling on low-ulimit CI).
+if (process.env.NODE_ENV === 'development') startLayerTemplateWatcher();
 registerAlarmsConfigRoutes(app, { config: source, sessions, audit, store: alarmsStore, serviceLayer });
 registerSetupRoutes(app, { config: source, sessions, audit, store: setupStore });
 registerOverviewRoutes(app, { config: source, sessions });

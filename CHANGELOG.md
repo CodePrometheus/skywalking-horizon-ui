@@ -24,6 +24,12 @@ The version line is shared by every package in the monorepo (apps + shared packa
 
 - **pprof and async-profiling tasks open a detail modal with their captured logs.**
 
+- **K8S_SERVICE gains a Network Profiling tab.** Kubernetes services, already observed by SkyWalking Rover's eBPF probes, now expose Network Profiling — pick a pod and capture the process-to-process network conversations as a topology, the same capability the Mesh layer offers.
+
+- **Profiling create dialogs are clearer and harder to misuse.** After a create the hint counts down to its single list refresh (`refreshing in Ns`), Escape closes the Async and pprof create dialogs, and Analyze stays disabled until at least one instance is selected.
+
+- **The Async result's event-type picker shows only what the task captured.** It lists just the JFR trees the selected task's events produce (EXECUTION_SAMPLE, LOCK, OBJECT_ALLOCATION_*), dropping options like PROFILER_LIVE_OBJECT that no Horizon-created task can produce — so you can't pick a type that renders an empty graph.
+
 ### Alarms
 
 - **The alarm timeline reads more clearly** — a clearer selection band and legend, and the detail sidebar reflows cleanly on narrow windows. Hovering the timeline now hints both affordances — click a minute to filter, or drag across the timeline to select a range — so range-selection is no longer hidden.
@@ -43,6 +49,8 @@ The version line is shared by every package in the monorepo (apps + shared packa
 - **The Kubernetes Node Status card now reads as a status, not a number.** Instead of a raw `1`, it shows the node's active conditions as colored chips — `Ready` in green, the `*Pressure` / `NetworkUnavailable` conditions in amber/red — so node health is legible at a glance.
 
 - **The Kubernetes Node dashboard gains a Pod Total card.** A compact card now sits directly under Node Status showing the current count of pods scheduled on the selected node (all phases) — the latest value of the same metric the "Pods on Node" trend already charts — so the space beside the status card is no longer blank.
+
+- **Satellite event and queue widgets break out per pipeline.** The SO11Y_SATELLITE Receive Events, Fetch Events, Queue Input / Output, and Queue Used widgets now label each series by its Satellite pipeline (`tracingpipe`, `jvmpipe`, `logpipe`, …) instead of collapsing every line onto a single `all`, so you can see which collection pipeline drives the rate.
 
 ### Performance & behavior tuning
 

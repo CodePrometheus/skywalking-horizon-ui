@@ -392,9 +392,7 @@ const fetchKey = computed(
     `${layerKey.value}|${scope.value}|${serviceName.value ?? ''}|${selectedInstance.value ?? ''}|${selectedEndpoint.value ?? ''}|${timeRange.range.startMs}|${timeRange.range.endMs}|${timeRange.step}`,
 );
 const lastFreshKey = ref<string | null>(null);
-// `immediate`: a warm cache on remount (Back from Traces within staleTime)
-// populates `data` synchronously with no change event — without it the
-// "Reading data…" gate hangs until the next auto-refresh.
+// `immediate` marks a warm-cache remount fresh, else the "Reading data…" gate hangs.
 watch(
   data,
   (d) => {
@@ -458,10 +456,7 @@ function widgetColor(w: { id?: string; title?: string; expressions?: string[] })
   return colorForMetric(w.id || w.title || w.expressions?.[0] || '');
 }
 
-// Metric→trace drill. Two gates only: the widget opts in via `traceDrill`, and
-// the layer has its Traces component on in NATIVE (or both) mode — the native
-// trace view is the one that consumes the drill's minDuration/state filter;
-// Zipkin's view ignores them. Not bound to any specific layer.
+// Native-trace layers only — the Zipkin view can't consume the drill filter.
 const router = useRouter();
 const layerTracesEnabled = computed<boolean>(() => {
   if (layer.value?.caps?.traces !== true) return false;
@@ -473,24 +468,31 @@ function traceDrillMode(w: DashboardWidget): 'latency' | 'error' | null {
   const m = w.traceDrill?.mode;
   return m === 'latency' || m === 'error' ? m : null;
 }
-// Half-window (ms) around the clicked bucket, scaled to step, capped at 6h.
-const DRILL_STEP_MS: Record<string, number> = { MINUTE: 60_000, HOUR: 3_600_000, DAY: 86_400_000 };
-function drillHalfWindowMs(): number {
-  const step = DRILL_STEP_MS[timeRange.step] ?? 60_000;
-  return Math.min(Math.max(5 * 60_000, step / 2), 6 * 60 * 60_000);
-}
 function drillCenterMs(dataIndex: number, len: number): number {
   const { startMs, endMs } = timeRange.range;
   if (len <= 1) return endMs;
   return Math.round(startMs + ((endMs - startMs) * dataIndex) / (len - 1));
 }
-// datetime-local wall-clock — must match the Traces tab's custom-range format.
+// MINUTE → ±5min; HOUR/DAY → the clicked hour/day (local calendar bucket, DST-safe).
+function drillWindow(dataIndex: number, len: number): { fromMs: number; toMs: number; labelMs: number } {
+  const center = drillCenterMs(dataIndex, len);
+  if (timeRange.step === 'MINUTE') {
+    const half = 5 * 60_000;
+    return { fromMs: center - half, toMs: center + half, labelMs: center };
+  }
+  const from = new Date(center);
+  from.setMinutes(0, 0, 0);
+  if (timeRange.step === 'DAY') from.setHours(0);
+  const to = new Date(from);
+  if (timeRange.step === 'DAY') to.setDate(to.getDate() + 1);
+  else to.setHours(to.getHours() + 1);
+  return { fromMs: from.getTime(), toMs: to.getTime(), labelMs: from.getTime() };
+}
 function toLocalInput(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-// Pinned drill hint; anchored to the grid so re-clicking repositions.
 const gridEl = ref<HTMLElement | null>(null);
 const drill = ref<{
   widgetId: string;
@@ -507,19 +509,15 @@ function onDrillPoint(
   const mode = traceDrillMode(w);
   if (!mode) return;
   const len = resultsById.value.get(w.id)?.series?.[0]?.data.length ?? 0;
-  const center = drillCenterMs(p.dataIndex, len);
-  const half = drillHalfWindowMs();
+  const win = drillWindow(p.dataIndex, len);
   const ms = Math.max(0, Math.round(p.value));
   const query: Record<string, string> = {
     dMode: mode,
-    dFrom: toLocalInput(center - half),
-    dTo: toLocalInput(center + half),
-    // Unique per click so a drill→drill navigation on the same tab re-fires.
-    dNonce: `${center}:${p.dataIndex}:${w.id}`,
+    dFrom: toLocalInput(win.fromMs),
+    dTo: toLocalInput(win.toMs),
+    dNonce: `${win.fromMs}:${p.dataIndex}:${w.id}`,
   };
   if (mode === 'latency') query.dValue = String(ms);
-  // service (id) seeds the fresh tab's selection; instance/endpoint go by name
-  // and the Traces tab resolves the id from its own lists.
   if (selectedId.value) query.service = selectedId.value;
   if (scope.value === 'instance' && selectedInstance.value) query.dInstance = selectedInstance.value;
   if (scope.value === 'endpoint' && selectedEndpoint.value) query.dEndpoint = selectedEndpoint.value;
@@ -531,7 +529,7 @@ function onDrillPoint(
     title: w.title,
     meta:
       band +
-      t('around {t}', { t: bucketTimeLabel(timeRange.step, center) }) +
+      t('around {t}', { t: bucketTimeLabel(timeRange.step, win.labelMs) }) +
       (mode === 'latency' ? ` · ≥ ${ms} ms` : ''),
     label: mode === 'latency' ? t('View slow traces') : t('View error traces'),
   };
@@ -793,9 +791,6 @@ const tabHostCtx = computed<TabHostCtx>(() => ({
     </div>
     </template>
 
-    <!-- Metric→trace drill hint: pinned at the clicked datapoint, offers the
-         pre-filtered Traces link. Anchored to the grid so clicking another
-         point repositions instead of dismissing. -->
     <FloatingPanel
       :open="!!drill"
       :anchor="gridEl"
@@ -1001,7 +996,6 @@ const tabHostCtx = computed<TabHostCtx>(() => ({
   }
 }
 
-/* Metric→trace drill hint (inside the teleported FloatingPanel). */
 .drill-pop {
   display: flex;
   flex-direction: column;
